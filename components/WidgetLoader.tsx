@@ -106,6 +106,17 @@ function readJourney(): string {
   }
 }
 
+// Skip the widget's home screen ("Start conversation" / "Continue
+// conversation") by nudging its iframe to the conversation route. A src
+// assignment that differs only by fragment is an in-place hash navigation -
+// no reload - and the widget's router lands straight on the composer.
+// Verified against a fresh visitor: #/messages renders the conversation view
+// directly with no bounce back to home.
+function jumpToMessages() {
+  const frame = document.querySelector('.woot-widget-holder iframe') as HTMLIFrameElement | null
+  if (frame?.src) frame.src = frame.src.split('#')[0] + '#/messages'
+}
+
 function loadScript(src: string): Promise<void> {
   return new Promise((resolve, reject) => {
     const s = document.createElement('script')
@@ -169,6 +180,7 @@ export function WidgetLoader({ apiBase }: { apiBase: string }) {
   const openChat = useCallback(async () => {
     if (startedRef.current) {
       chatwoot()?.toggle('open')
+      jumpToMessages()
       setPanelOpen(true)
       rememberPanelState('open')
       return
@@ -187,11 +199,19 @@ export function WidgetLoader({ apiBase }: { apiBase: string }) {
       if (!res.ok) throw new Error(`boot ${res.status}`)
       const boot = await res.json() as BootPayload
 
+      // Follow the SITE's theme (core sets data-theme on the root and keeps it
+      // in step with the toggle/OS). Chatwoot's widget offers 'light' or
+      // 'auto' (auto = OS preference), so: site dark -> 'auto' (dark for
+      // everyone whose OS agrees, which is nearly everyone who chose dark),
+      // site light -> hard 'light'. Read at boot; a mid-visit toggle catches
+      // up on the next page.
+      const siteIsDark = document.documentElement.getAttribute('data-theme') === 'dark'
       ;(window as unknown as { chatwootSettings?: Record<string, unknown> }).chatwootSettings = {
         hideMessageBubble: true,
         position: boot.position,
         locale: 'en',
         type: 'standard',
+        darkMode: siteIsDark ? 'auto' : 'light',
       }
 
       // The ready listener attaches BEFORE the SDK runs - with warm caches the
@@ -226,6 +246,7 @@ export function WidgetLoader({ apiBase }: { apiBase: string }) {
         setTimeout(push, 8000)
         window.addEventListener('chatwoot:on-message', push, { once: true })
         chatwoot()?.toggle('open')
+        jumpToMessages()
         setPanelOpen(true)
         rememberPanelState('open')
         setState('ready')
