@@ -42,6 +42,28 @@ export async function startMachine(token: string, app: string, machineId: string
   await flyApi(token, `/apps/${app}/machines/${machineId}/start`, { method: 'POST' })
 }
 
+export async function restartMachine(token: string, app: string, machineId: string): Promise<void> {
+  await flyApi(token, `/apps/${app}/machines/${machineId}/restart`, { method: 'POST' })
+}
+
+// App secrets for a machines-first app go through GraphQL (the REST surface has
+// no equivalent); they're staged and picked up when a machine (re)starts.
+export async function setAppSecrets(token: string, app: string, secrets: Record<string, string>): Promise<void> {
+  const res = await fetch('https://api.fly.io/graphql', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+    body: JSON.stringify({
+      query: 'mutation($input: SetSecretsInput!) { setSecrets(input: $input) { app { name } } }',
+      variables: { input: { appId: app, secrets: Object.entries(secrets).map(([key, value]) => ({ key, value })) } },
+    }),
+    signal: AbortSignal.timeout(30_000),
+  })
+  const json = await res.json().catch(() => null) as { errors?: Array<{ message: string }> } | null
+  if (!res.ok || json?.errors?.length) {
+    throw new Error(`Fly setSecrets: ${json?.errors?.[0]?.message ?? res.status}`)
+  }
+}
+
 // Image swap preserving the rest of the machine config. Fly restarts the
 // machine with the new image; Chatwoot's entrypoint migrates on boot.
 export async function updateMachineImage(token: string, app: string, machineId: string, image: string): Promise<void> {

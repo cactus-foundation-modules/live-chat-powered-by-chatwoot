@@ -32,6 +32,7 @@ export async function GET() {
     retentionMonths: config.retentionMonths,
     hasOwnAgentToken: !!ownToken,
     envProvided: envProvidedKeys(),
+    smtpConfigured: !!(process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS),
   })
 }
 

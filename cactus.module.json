@@ -1,6 +1,6 @@
 {
   "name": "live-chat",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "tablePrefix": "lc_",
   "description": "Live Chat Powered By Chatwoot - self-hosted live chat with attachments, canned replies and a full inbox in Cactus admin, answered from the site, the admin, or the Chatwoot mobile app.",
   "requiresCoreVersion": "0.5.988",

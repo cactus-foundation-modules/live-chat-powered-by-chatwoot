@@ -22,6 +22,7 @@ type Settings = {
   retentionMonths: number
   hasOwnAgentToken: boolean
   envProvided: string[]
+  smtpConfigured: boolean
 }
 
 type Status = {
@@ -122,6 +123,23 @@ export function LiveChatSettingsTab() {
     }
   }
 
+  async function syncEmail() {
+    setBusy(true)
+    setErr('')
+    setMsg('')
+    try {
+      const res = await fetch(`${API_BASE}/admin/sync-email`, { method: 'POST' })
+      const json = await res.json().catch(() => null)
+      if (!res.ok) throw new Error(json?.error ?? 'Sync failed')
+      setMsg('Email settings pushed - the chat server is restarting with email switched on.')
+      setTimeout(loadStatus, 30_000)
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'Sync failed')
+    } finally {
+      setBusy(false)
+    }
+  }
+
   async function provision(action: 'start' | 'step') {
     setProv((p) => ({ ...p, running: true }))
     setErr('')
@@ -204,10 +222,16 @@ export function LiveChatSettingsTab() {
             Small security patches install themselves overnight. Bigger version jumps wait for the
             button below.
           </p>
-          <div style={{ display: 'flex', gap: '0.5rem' }}>
+          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
             <button type="button" className="btn btn-sm" disabled={busy} onClick={() => machineAction('wake')}>Wake now</button>
             <button type="button" className="btn btn-sm" disabled={busy || !settings.hasFlyToken} onClick={() => machineAction('update')}>Update Chatwoot</button>
+            <button type="button" className="btn btn-sm" disabled={busy || !settings.hasFlyToken} onClick={syncEmail}>Sync email to chat server</button>
           </div>
+          <p style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', marginTop: '0.5rem' }}>
+            {settings.smtpConfigured
+              ? 'Email sync copies the SMTP details from Settings → Email across to the chat server (it restarts briefly), so it can email agents about missed messages.'
+              : 'To let the chat server send email (missed-message alerts and the like), fill in the SMTP section under Settings → Email, deploy, then press "Sync email to chat server".'}
+          </p>
           {envManaged && (
             <p style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', marginTop: '0.75rem' }}>
               Connection settings on this install are managed centrally ({settings.envProvided.length} values from the environment), so there is nothing to fill in here.
