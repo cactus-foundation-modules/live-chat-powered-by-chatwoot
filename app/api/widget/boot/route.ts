@@ -82,8 +82,16 @@ export async function GET() {
     } catch { /* default to online copy */ }
   }
 
+  // Nobody online AND no SMTP on the site means an offline message has no way
+  // to reach a human (no missed-message emails to forward it) - so the widget
+  // hides entirely rather than collecting messages into a void. The moment
+  // either changes (back online, or SMTP filled in), it reappears on the next
+  // page load.
+  const smtpConfigured = !!(process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS)
+  const enabled = !!(config.serverUrl && config.websiteToken) && (online || smtpConfigured)
+
   return NextResponse.json({
-    enabled: !!(config.serverUrl && config.websiteToken),
+    enabled,
     label: config.widgetLabel,
     replyTime: config.replyTimeText,
     position: config.widgetPosition,
