@@ -26,9 +26,10 @@ export function AgentConsole({ apiBase, position }: { apiBase: string; position:
     } catch { /* next poll */ }
   }, [apiBase])
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- delegating to async helper; all setState calls are after awaits
   useEffect(() => {
-    poll()
+    // Fired through the microtask queue so the effect body itself sets no
+    // state; the fetch's own await does the real deferring anyway.
+    void Promise.resolve().then(poll)
     const t = setInterval(poll, 30_000)
     return () => clearInterval(t)
   }, [poll])
