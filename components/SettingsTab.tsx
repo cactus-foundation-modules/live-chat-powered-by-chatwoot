@@ -242,13 +242,32 @@ export function LiveChatSettingsTab() {
 
       <div className="card">
         <h3 style={{ fontSize: '0.9375rem', fontWeight: 600, marginBottom: '0.25rem' }}>My agent identity</h3>
-        <p style={{ fontSize: 'var(--text-sm)', color: 'var(--color-text-muted)', marginBottom: '0.75rem' }}>
-          {settings.hasOwnAgentToken
-            ? 'Your personal agent token is saved - replies you send appear under your own name.'
-            : 'Without a personal token your replies send as the site’s shared identity. Copy your Access Token from the chat server (Profile Settings) and paste it here.'}
-        </p>
+        {settings.hasOwnAgentToken ? (
+          <p style={{ fontSize: 'var(--text-sm)', color: 'var(--color-text-muted)', marginBottom: '0.75rem' }}>
+            Your personal token is saved - replies you send appear under your own name.
+          </p>
+        ) : (
+          <div style={{ fontSize: 'var(--text-sm)', color: 'var(--color-text-muted)', marginBottom: '0.75rem' }}>
+            <p style={{ marginBottom: '0.5rem' }}>
+              Right now your replies go out under the site&apos;s shared name. To send as yourself,
+              fetch your personal token - it lives on the chat server&apos;s own website (not the phone app):
+            </p>
+            <ol style={{ margin: 0, paddingLeft: '1.25rem', display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+              <li>
+                Open{' '}
+                {settings.serverUrl ? (
+                  <a href={settings.serverUrl} target="_blank" rel="noreferrer noopener">{settings.serverUrl.replace(/^https?:\/\//, '')}</a>
+                ) : 'your chat server'}{' '}
+                in a browser and sign in (same email and password as the phone app).
+              </li>
+              <li>Click your round profile picture in the bottom-left corner, then <strong>Profile Settings</strong>.</li>
+              <li>Scroll to the bottom - <strong>Access Token</strong> - and press copy.</li>
+              <li>Paste it below and save.</li>
+            </ol>
+          </div>
+        )}
         <div style={{ display: 'flex', gap: '0.5rem' }}>
-          <input type="password" style={{ flex: 1 }} value={agentToken} placeholder="Access token from the chat server"
+          <input type="password" style={{ flex: 1 }} value={agentToken} placeholder="Paste your Access Token here"
             onChange={(e) => setAgentToken(e.target.value)} />
           <button type="button" className="btn btn-primary btn-sm" disabled={busy || agentToken.length < 10} onClick={saveAgentToken}>Save</button>
           {settings.hasOwnAgentToken && (
