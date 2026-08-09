@@ -24,6 +24,7 @@ function bucketAndPrefix(): { bucket: string; prefix: string } | null {
   const raw = process.env.LIVECHAT_BACKUP_BUCKET_PATH
   if (!raw) return null
   const [bucket, ...rest] = raw.split('/')
+  if (!bucket) return null
   return { bucket, prefix: rest.join('/') }
 }
 

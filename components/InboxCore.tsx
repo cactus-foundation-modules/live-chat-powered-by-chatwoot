@@ -45,7 +45,7 @@ function timeLabel(iso: string | null): string {
 
 export function useLiveChatRealtime(apiBase: string, onEvent: (event: string, data: unknown) => void) {
   const onEventRef = useRef(onEvent)
-  onEventRef.current = onEvent
+  useEffect(() => { onEventRef.current = onEvent }, [onEvent])
 
   useEffect(() => {
     let ws: WebSocket | null = null
@@ -108,7 +108,7 @@ export function InboxCore({ apiBase, compact, onUnread }: {
   const [canned, setCanned] = useState<Canned[]>([])
   const [showCanned, setShowCanned] = useState(false)
   const activeIdRef = useRef<number | null>(null)
-  activeIdRef.current = activeId
+  useEffect(() => { activeIdRef.current = activeId }, [activeId])
   const scrollRef = useRef<HTMLDivElement | null>(null)
 
   const loadList = useCallback(async (which: 'open' | 'resolved' = tab) => {
@@ -135,6 +135,7 @@ export function InboxCore({ apiBase, compact, onUnread }: {
     } catch { /* transient */ }
   }, [apiBase])
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- delegating to async helper; all setState calls are after awaits
   useEffect(() => { loadList() }, [loadList])
   useEffect(() => {
     const t = setInterval(() => {

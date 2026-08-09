@@ -28,20 +28,28 @@ type BootPayload = {
   identity?: { identifier: string; identifierHash: string; name?: string; email?: string }
 }
 
-declare global {
-  interface Window {
-    __cactusConsent?: Record<string, boolean>
-    chatwootSettings?: Record<string, unknown>
-    $chatwoot?: {
-      toggle: (state?: 'open' | 'close') => void
-      setUser: (identifier: string, props: Record<string, unknown>) => void
-      setCustomAttributes: (attrs: Record<string, unknown>) => void
-    }
-    turnstile?: {
-      render: (el: HTMLElement, opts: Record<string, unknown>) => string
-      remove: (id: string) => void
-    }
-  }
+// window.__cactusConsent and window.turnstile are declared by core with their
+// own types - read them through casts rather than re-declaring.
+type ChatwootGlobal = {
+  toggle: (state?: 'open' | 'close') => void
+  setUser: (identifier: string, props: Record<string, unknown>) => void
+  setCustomAttributes: (attrs: Record<string, unknown>) => void
+}
+
+function chatwoot(): ChatwootGlobal | undefined {
+  return (window as unknown as { $chatwoot?: ChatwootGlobal }).$chatwoot
+}
+
+function consentMap(): Record<string, boolean> | undefined {
+  return (window as unknown as { __cactusConsent?: Record<string, boolean> }).__cactusConsent
+}
+
+type TurnstileGlobal = {
+  render: (el: HTMLElement, opts: Record<string, unknown>) => string
+}
+
+function turnstileGlobal(): TurnstileGlobal | undefined {
+  return (window as unknown as { turnstile?: TurnstileGlobal }).turnstile
 }
 
 const JOURNEY_KEY = 'cactus-livechat-journey'
@@ -49,7 +57,7 @@ const JOURNEY_MAX = 25
 
 function journeyAllowed(): boolean {
   if (typeof window === 'undefined') return false
-  const consent = window.__cactusConsent
+  const consent = consentMap()
   if (consent === undefined) return true // no banner on this site
   return consent['live-chat'] === true
 }
@@ -60,7 +68,7 @@ function recordPageView() {
     const raw = sessionStorage.getItem(JOURNEY_KEY)
     const list: Array<{ p: string; t: number }> = raw ? JSON.parse(raw) : []
     const path = window.location.pathname
-    if (list.length === 0 || list[list.length - 1].p !== path) {
+    if (list.length === 0 || list[list.length - 1]?.p !== path) {
       list.push({ p: path, t: Date.now() })
       sessionStorage.setItem(JOURNEY_KEY, JSON.stringify(list.slice(-JOURNEY_MAX)))
     }
@@ -113,13 +121,14 @@ export function WidgetLoader({ apiBase }: { apiBase: string }) {
   }, [apiBase])
 
   const getTurnstileToken = useCallback(async (siteKey: string): Promise<string | undefined> => {
-    if (!window.turnstile) {
+    if (!turnstileGlobal()) {
       await loadScript('https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit')
     }
-    if (!window.turnstile || !turnstileHost.current) return undefined
+    const ts = turnstileGlobal()
+    if (!ts || !turnstileHost.current) return undefined
     return new Promise<string | undefined>((resolve) => {
       const timer = setTimeout(() => resolve(undefined), 30_000)
-      window.turnstile!.render(turnstileHost.current!, {
+      ts.render(turnstileHost.current!, {
         sitekey: siteKey,
         callback: (token: string) => { clearTimeout(timer); resolve(token) },
         'error-callback': () => { clearTimeout(timer); resolve(undefined) },
@@ -129,7 +138,7 @@ export function WidgetLoader({ apiBase }: { apiBase: string }) {
 
   const openChat = useCallback(async () => {
     if (startedRef.current) {
-      window.$chatwoot?.toggle('open')
+      chatwoot()?.toggle('open')
       return
     }
     if (!info) return
@@ -146,7 +155,7 @@ export function WidgetLoader({ apiBase }: { apiBase: string }) {
       if (!res.ok) throw new Error(`boot ${res.status}`)
       const boot = await res.json() as BootPayload
 
-      window.chatwootSettings = {
+      ;(window as unknown as { chatwootSettings?: Record<string, unknown> }).chatwootSettings = {
         hideMessageBubble: true,
         position: boot.position,
         locale: 'en',
@@ -160,7 +169,7 @@ export function WidgetLoader({ apiBase }: { apiBase: string }) {
       window.addEventListener('chatwoot:ready', () => {
         startedRef.current = true
         if (boot.identity) {
-          window.$chatwoot?.setUser(boot.identity.identifier, {
+          chatwoot()?.setUser(boot.identity.identifier, {
             identifier_hash: boot.identity.identifierHash,
             name: boot.identity.name,
             email: boot.identity.email,
@@ -169,8 +178,8 @@ export function WidgetLoader({ apiBase }: { apiBase: string }) {
         const journey = readJourney()
         const attrs: Record<string, unknown> = { started_on_page: window.location.pathname }
         if (journey) attrs.pages_this_visit = journey
-        window.$chatwoot?.setCustomAttributes(attrs)
-        window.$chatwoot?.toggle('open')
+        chatwoot()?.setCustomAttributes(attrs)
+        chatwoot()?.toggle('open')
         setState('ready')
       }, { once: true })
     } catch {

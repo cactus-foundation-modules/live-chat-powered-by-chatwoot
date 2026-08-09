@@ -60,6 +60,7 @@ export function LiveChatSettingsTab() {
     } catch { /* fine */ }
   }, [])
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- delegating to async helpers; all setState calls are after awaits
   useEffect(() => { load(); loadStatus() }, [load, loadStatus])
 
   async function patch(body: Record<string, unknown>, okMsg: string) {

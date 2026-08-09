@@ -248,7 +248,7 @@ export async function POST(request: NextRequest) {
             body: JSON.stringify({ command: ['sh', '-c', `echo ${b64} | base64 -d > /tmp/seed.rb && cd /app && ${envPrefix} bundle exec rails runner /tmp/seed.rb`], timeout: 55 }),
           })
         const match = (exec.stdout ?? '').match(/===R===(\{.*\})/)
-        if (!match) throw new Error(`Seed did not finish: ${(exec.stderr ?? exec.stdout ?? '').slice(-200)}`)
+        if (!match?.[1]) throw new Error(`Seed did not finish: ${(exec.stderr ?? exec.stdout ?? '').slice(-200)}`)
         const seeded = JSON.parse(match[1]) as { account_id: number; inbox_id: number; website_token: string; hmac_token: string }
         await updateSettings({
           serverUrl: `https://${state.appName}.fly.dev`,

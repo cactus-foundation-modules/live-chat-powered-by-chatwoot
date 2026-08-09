@@ -33,6 +33,7 @@ export function LiveChatBackupCard() {
     } catch { /* leave as-is */ }
   }, [])
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- delegating to async helper; all setState calls are after awaits
   useEffect(() => { load() }, [load])
 
   async function backupNow() {

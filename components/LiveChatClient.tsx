@@ -42,6 +42,7 @@ function CannedTab({ canManage }: { canManage: boolean }) {
     }
   }, [])
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- delegating to async helper; all setState calls are after awaits
   useEffect(() => { load() }, [load])
 
   async function save() {
