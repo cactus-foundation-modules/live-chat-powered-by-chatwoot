@@ -33,6 +33,8 @@ export async function GET() {
     hasOwnAgentToken: !!ownToken,
     envProvided: envProvidedKeys(),
     smtpConfigured: !!(process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS),
+    chatLoginEmail: config.chatLoginEmail,
+    hasChatLoginPassword: !!config.chatLoginPassword,
   })
 }
 

@@ -6,7 +6,7 @@ import Link from 'next/link'
 // linking through to the Live Chat conversations page.
 export function InboxLinkButton({ adminPath }: { adminPath?: string }) {
   return (
-    <Link href={`/${adminPath ?? ''}/m/live-chat/live-chat`} className="btn btn-sm">
+    <Link href={`/${adminPath ?? ''}/m/live-chat/inbox`} className="btn btn-sm">
       Live Chats
     </Link>
   )

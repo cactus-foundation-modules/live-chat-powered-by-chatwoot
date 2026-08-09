@@ -28,6 +28,8 @@ export type LiveChatConfig = {
   widgetLabel: string
   replyTimeText: string
   retentionMonths: number
+  chatLoginEmail: string | null
+  chatLoginPassword: string | null
 }
 
 type SettingsRow = Record<string, unknown>
@@ -70,6 +72,8 @@ export async function getLiveChatConfig(): Promise<LiveChatConfig> {
     widgetLabel: str(row?.widget_label) ?? 'Chat with us',
     replyTimeText: str(row?.reply_time_text) ?? 'We usually reply within a few hours',
     retentionMonths: num(row?.retention_months) ?? 12,
+    chatLoginEmail: env.LIVECHAT_LOGIN_EMAIL ?? str(row?.chat_login_email),
+    chatLoginPassword: dec(row?.chat_login_password_encrypted),
   }
 }
 
@@ -101,6 +105,8 @@ export type UpdatableSettings = Partial<{
   replyTimeText: string
   retentionMonths: number
   provisionState: unknown
+  chatLoginEmail: string
+  chatLoginPassword: string
 }>
 
 export async function updateSettings(data: UpdatableSettings): Promise<void> {
@@ -129,6 +135,8 @@ export async function updateSettings(data: UpdatableSettings): Promise<void> {
     provision_state: data.provisionState !== undefined
       ? JSON.stringify(data.provisionState)
       : (row?.provision_state != null ? JSON.stringify(row.provision_state) : null),
+    chat_login_email: keep<string | null>(data.chatLoginEmail, row?.chat_login_email, null),
+    chat_login_password_encrypted: enc(data.chatLoginPassword, row?.chat_login_password_encrypted),
   }
 
   await prisma.$executeRaw`
@@ -137,13 +145,13 @@ export async function updateSettings(data: UpdatableSettings): Promise<void> {
       "hmac_token_encrypted", "api_token_encrypted", "webhook_token",
       "fly_app", "fly_token_encrypted", "backup_endpoint", "backup_token_encrypted",
       "widget_position", "widget_label", "reply_time_text", "retention_months",
-      "provision_state", "updated_at"
+      "provision_state", "chat_login_email", "chat_login_password_encrypted", "updated_at"
     ) VALUES (
       'singleton', ${values.server_url}, ${values.account_id}, ${values.inbox_id}, ${values.website_token},
       ${values.hmac_token_encrypted}, ${values.api_token_encrypted}, ${values.webhook_token},
       ${values.fly_app}, ${values.fly_token_encrypted}, ${values.backup_endpoint}, ${values.backup_token_encrypted},
       ${values.widget_position}, ${values.widget_label}, ${values.reply_time_text}, ${values.retention_months},
-      ${values.provision_state}::jsonb, now()
+      ${values.provision_state}::jsonb, ${values.chat_login_email}, ${values.chat_login_password_encrypted}, now()
     )
     ON CONFLICT ("id") DO UPDATE SET
       "server_url" = EXCLUDED."server_url",
@@ -162,6 +170,8 @@ export async function updateSettings(data: UpdatableSettings): Promise<void> {
       "reply_time_text" = EXCLUDED."reply_time_text",
       "retention_months" = EXCLUDED."retention_months",
       "provision_state" = EXCLUDED."provision_state",
+      "chat_login_email" = EXCLUDED."chat_login_email",
+      "chat_login_password_encrypted" = EXCLUDED."chat_login_password_encrypted",
       "updated_at" = now()
   `
 }

@@ -15,7 +15,7 @@ export async function syncChatNotification(): Promise<void> {
       type: 'message',
       dedupeKey: DEDUPE_KEY,
       title: `${n} unread live chat${n === 1 ? '' : 's'}`,
-      link: '/m/live-chat/live-chat',
+      link: '/m/live-chat/inbox',
     })
   } else {
     await clearAlert(DEDUPE_KEY)

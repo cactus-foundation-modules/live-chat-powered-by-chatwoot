@@ -26,7 +26,7 @@ export async function SubmissionChatPanel({ submissionId }: { submissionId: stri
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
         {conversations.map((c) => (
-          <Link key={c.id} href={`/${adminPath}/m/live-chat/live-chat`}
+          <Link key={c.id} href={`/${adminPath}/m/live-chat/inbox`}
             style={{ fontSize: '0.8125rem', color: 'inherit', display: 'flex', justifyContent: 'space-between', gap: '0.75rem', textDecoration: 'none' }}>
             <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {c.status === 'open' ? '🟢' : '✅'} {c.lastMessagePreview || `Conversation #${c.id}`}

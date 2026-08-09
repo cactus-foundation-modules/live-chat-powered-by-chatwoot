@@ -23,6 +23,8 @@ type Settings = {
   hasOwnAgentToken: boolean
   envProvided: string[]
   smtpConfigured: boolean
+  chatLoginEmail: string | null
+  hasChatLoginPassword: boolean
 }
 
 type Status = {
@@ -43,6 +45,7 @@ export function LiveChatSettingsTab() {
   const [agentToken, setAgentToken] = useState('')
   const [widget, setWidget] = useState({ widgetPosition: 'right' as 'left' | 'right', widgetLabel: '', replyTimeText: '', retentionMonths: 12 })
   const [prov, setProv] = useState({ flyToken: '', dbUrl: '', appName: '', running: false, step: '' })
+  const [revealed, setRevealed] = useState<{ email: string; password: string | null } | null>(null)
 
   const load = useCallback(async () => {
     try {
@@ -157,7 +160,7 @@ export function LiveChatSettingsTab() {
       if (step !== 'done') {
         setTimeout(() => provision('step'), step === 'prepare-wait' ? 10_000 : 1500)
       } else {
-        setMsg('Chat server built and connected. Add the Live Chat block to your site layout and you are away.')
+        setMsg('Chat server built and connected. Your chat login (for the phone app) is shown in the "Chat server login" card above - and stays there. Next: add the Live Chat block to your site layout.')
         setProv((p) => ({ ...p, running: false }))
         load()
         loadStatus()
@@ -179,6 +182,44 @@ export function LiveChatSettingsTab() {
     <div style={{ maxWidth: '46rem', display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
       {msg && <div className="alert alert-success" style={{ fontSize: '0.875rem' }}>{msg}</div>}
       {err && <div className="alert alert-danger" style={{ fontSize: '0.875rem' }}>{err}</div>}
+
+      {settings.serverUrl && (
+        <div className="card" style={{ background: 'var(--color-bg-subtle)' }}>
+          <h3 style={{ fontSize: '0.9375rem', fontWeight: 600, marginBottom: '0.25rem' }}>How live chat fits together</h3>
+          <p style={{ fontSize: 'var(--text-sm)', color: 'var(--color-text-muted)', margin: 0 }}>
+            Everything day-to-day happens <strong>here in your admin</strong>: answering under Live Chat,
+            these settings, backups on the Backup page. Underneath, a small separate <strong>chat engine</strong> runs
+            at <a href={settings.serverUrl} target="_blank" rel="noreferrer noopener">{settings.serverUrl.replace(/^https?:\/\//, '')}</a> -
+            you rarely visit it, but it is what the <strong>Chatwoot phone app</strong> signs into for
+            push notifications on the go, using the chat login below.
+          </p>
+        </div>
+      )}
+
+      {settings.chatLoginEmail && (
+        <div className="card">
+          <h3 style={{ fontSize: '0.9375rem', fontWeight: 600, marginBottom: '0.25rem' }}>Chat server login</h3>
+          <p style={{ fontSize: 'var(--text-sm)', color: 'var(--color-text-muted)', marginBottom: '0.75rem' }}>
+            Used by the phone app (and the chat engine&apos;s own website, on the rare day you need it).
+          </p>
+          <div style={{ fontSize: '0.875rem', display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+            <div>Email: <strong>{settings.chatLoginEmail}</strong></div>
+            {revealed ? (
+              <div>Password: <code>{revealed.password ?? 'held by your administrator - not stored on this site'}</code></div>
+            ) : (
+              <div>
+                <button type="button" className="btn btn-sm" disabled={busy}
+                  onClick={async () => {
+                    const res = await fetch(`${API_BASE}/admin/chat-login`, { method: 'POST' })
+                    if (res.ok) setRevealed(await res.json())
+                  }}>
+                  {settings.hasChatLoginPassword ? 'Reveal password' : 'Password details'}
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {!settings.serverUrl && (
         <div className="card">

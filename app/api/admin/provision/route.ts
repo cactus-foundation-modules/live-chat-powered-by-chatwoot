@@ -31,6 +31,8 @@ type ProvisionState = {
   secretKeyBase?: string
   webhookToken?: string
   backupToken?: string
+  adminEmail?: string
+  chatPassword?: string
   error?: string
 }
 
@@ -128,6 +130,10 @@ export async function POST(request: NextRequest) {
       secretKeyBase: crypto.randomUUID().replaceAll('-', '') + crypto.randomUUID().replaceAll('-', ''),
       webhookToken: crypto.randomUUID().replaceAll('-', ''),
       backupToken: crypto.randomUUID().replaceAll('-', ''),
+      // The chat server gets its own login, created for whoever runs the
+      // wizard - it's what the Chatwoot mobile app signs in with.
+      adminEmail: user.email,
+      chatPassword: crypto.randomUUID().replaceAll('-', '').slice(0, 14) + '9!Aa',
     }
     await updateSettings({ provisionState: state })
     return NextResponse.json({ ok: true, step: state.step })
@@ -235,32 +241,49 @@ export async function POST(request: NextRequest) {
           `  inbox = Inbox.create!(account: account, channel: channel, name: 'Website', greeting_enabled: false)`,
           `end`,
           `channel = inbox.channel`,
+          // The login: whoever ran the wizard becomes the chat server's
+          // administrator - this is what the mobile app signs in with, and its
+          // access token is what the module talks to the server with.
+          `admin_email = ENV['CACTUS_ADMIN_EMAIL']`,
+          `admin_pw = ENV['CACTUS_ADMIN_PASSWORD']`,
+          `owner = User.find_by(email: admin_email)`,
+          `if owner.nil?`,
+          `  owner = User.new(name: admin_email.split('@').first.tr('.', ' ').split.map(&:capitalize).join(' '), email: admin_email, password: admin_pw, password_confirmation: admin_pw)`,
+          `  owner.confirmed_at = Time.zone.now`,
+          `  owner.save!`,
+          `end`,
+          `AccountUser.find_by(account: account, user: owner) || AccountUser.create!(account: account, user: owner, role: :administrator)`,
+          `InboxMember.find_by(inbox: inbox, user: owner) || InboxMember.create!(inbox: inbox, user: owner)`,
           `wh = '${siteUrl.replace(/\/$/, '')}/api/m/live-chat/webhook?token=${state.webhookToken}'`,
           `account.webhooks.create!(url: wh, subscriptions: %w[conversation_created conversation_status_changed conversation_updated message_created message_updated]) unless account.webhooks.exists?(url: wh)`,
-          `puts '===R===' + JSON.generate({account_id: account.id, inbox_id: inbox.id, website_token: channel.website_token, hmac_token: channel.hmac_token})`,
+          `puts '===R===' + JSON.generate({account_id: account.id, inbox_id: inbox.id, website_token: channel.website_token, hmac_token: channel.hmac_token, api_token: owner.access_token&.token})`,
         ].join('\n')
         const b64 = Buffer.from(script, 'utf8').toString('base64')
         const env = machineEnv(state, siteUrl)
         const envPrefix = Object.entries(env).map(([k, v]) => `${k}='${v}'`).join(' ')
+        const seedEnv = `${envPrefix} CACTUS_ADMIN_EMAIL='${state.adminEmail}' CACTUS_ADMIN_PASSWORD='${state.chatPassword}'`
         const exec = await fly<{ stdout?: string; stderr?: string; exit_code?: number }>(
           state.flyToken!, `/apps/${state.appName}/machines/${state.machineId}/exec`, {
             method: 'POST',
-            body: JSON.stringify({ command: ['sh', '-c', `echo ${b64} | base64 -d > /tmp/seed.rb && cd /app && ${envPrefix} bundle exec rails runner /tmp/seed.rb`], timeout: 55 }),
+            body: JSON.stringify({ command: ['sh', '-c', `echo ${b64} | base64 -d > /tmp/seed.rb && cd /app && ${seedEnv} bundle exec rails runner /tmp/seed.rb`], timeout: 55 }),
           })
         const match = (exec.stdout ?? '').match(/===R===(\{.*\})/)
         if (!match?.[1]) throw new Error(`Seed did not finish: ${(exec.stderr ?? exec.stdout ?? '').slice(-200)}`)
-        const seeded = JSON.parse(match[1]) as { account_id: number; inbox_id: number; website_token: string; hmac_token: string }
+        const seeded = JSON.parse(match[1]) as { account_id: number; inbox_id: number; website_token: string; hmac_token: string; api_token: string | null }
         await updateSettings({
           serverUrl: `https://${state.appName}.fly.dev`,
           accountId: seeded.account_id,
           inboxId: seeded.inbox_id,
           websiteToken: seeded.website_token,
           hmacToken: seeded.hmac_token,
+          ...(seeded.api_token ? { apiToken: seeded.api_token } : {}),
           webhookToken: state.webhookToken,
           flyApp: state.appName,
           flyToken: state.flyToken,
           backupEndpoint: `https://${state.appName}.fly.dev:8443`,
           backupToken: state.backupToken,
+          chatLoginEmail: state.adminEmail,
+          chatLoginPassword: state.chatPassword,
         })
         state.step = 'done'
         break
