@@ -56,6 +56,15 @@ function turnstileGlobal(): TurnstileGlobal | undefined {
 
 const JOURNEY_KEY = 'cactus-livechat-journey'
 const JOURNEY_MAX = 25
+// 'open' = the visitor navigated with the chat panel open, so it reopens
+// itself on the next page (conversation continuity). 'closed' = they shut it
+// deliberately - back to the bubble. Session-scoped like the journey: only a
+// visitor already chatting THIS visit ever auto-loads anything.
+const ACTIVE_KEY = 'cactus-livechat-active'
+
+function rememberPanelState(state: 'open' | 'closed') {
+  try { sessionStorage.setItem(ACTIVE_KEY, state) } catch { /* storage unavailable */ }
+}
 
 // The server decides whether the journey buffer is consent-gated (boot GET's
 // journeyGate): core defines window.__cactusConsent whether or not the banner
@@ -118,8 +127,8 @@ export function WidgetLoader({ apiBase }: { apiBase: string }) {
   // Chatwoot announces its panel opening/closing; when it closes, our bubble
   // comes back (its own launcher stays hidden), so chat can always be reopened.
   useEffect(() => {
-    const onOpen = () => setPanelOpen(true)
-    const onClose = () => setPanelOpen(false)
+    const onOpen = () => { setPanelOpen(true); rememberPanelState('open') }
+    const onClose = () => { setPanelOpen(false); rememberPanelState('closed') }
     window.addEventListener('chatwoot:opened', onOpen)
     window.addEventListener('chatwoot:closed', onClose)
     return () => {
@@ -161,6 +170,7 @@ export function WidgetLoader({ apiBase }: { apiBase: string }) {
     if (startedRef.current) {
       chatwoot()?.toggle('open')
       setPanelOpen(true)
+      rememberPanelState('open')
       return
     }
     if (!info) return
@@ -217,6 +227,7 @@ export function WidgetLoader({ apiBase }: { apiBase: string }) {
         window.addEventListener('chatwoot:on-message', push, { once: true })
         chatwoot()?.toggle('open')
         setPanelOpen(true)
+        rememberPanelState('open')
         setState('ready')
       }
 
@@ -248,6 +259,19 @@ export function WidgetLoader({ apiBase }: { apiBase: string }) {
       setState('error')
     }
   }, [apiBase, info, getTurnstileToken])
+
+  // Conversation continuity: a visitor who navigated with the panel open gets
+  // it reopened on the new page without another click. Runs once per page.
+  const autoOpenedRef = useRef(false)
+  useEffect(() => {
+    if (!info || autoOpenedRef.current || startedRef.current || state !== 'idle') return
+    let flag: string | null = null
+    try { flag = sessionStorage.getItem(ACTIVE_KEY) } catch { /* storage unavailable */ }
+    if (flag === 'open') {
+      autoOpenedRef.current = true
+      openChat()
+    }
+  }, [info, state, openChat])
 
   if (!info) return null
 
