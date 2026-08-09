@@ -17,12 +17,14 @@ type WebhookPayload = {
     assignee?: { name?: string } | null
   }
   additional_attributes?: Record<string, unknown>
+  custom_attributes?: Record<string, unknown>
   // message_created shape
   conversation?: {
     id?: number
     status?: string
     meta?: { sender?: { name?: string; email?: string | null }; assignee?: { name?: string } | null }
     additional_attributes?: Record<string, unknown>
+    custom_attributes?: Record<string, unknown>
   }
   message_type?: string
   content?: string | null
@@ -30,6 +32,18 @@ type WebhookPayload = {
   sender?: { name?: string; type?: string } | null
   attachments?: Array<Record<string, unknown>>
   created_at?: string | number
+}
+
+// The journey attributes arrive as conversation custom_attributes; Chatwoot's
+// own additional_attributes carry the natively captured referer/browser info.
+// Merge both into the mirror's meta (custom wins) so the inbox always has
+// SOMETHING for "where are they" even before the widget's attributes land.
+function mergeMeta(
+  additional: Record<string, unknown> | undefined,
+  custom: Record<string, unknown> | undefined
+): Record<string, unknown> | null {
+  const merged = { ...(additional ?? {}), ...(custom ?? {}) }
+  return Object.keys(merged).length > 0 ? merged : null
 }
 
 function toDate(value: string | number | undefined): Date | undefined {
@@ -64,7 +78,7 @@ export async function POST(request: NextRequest) {
           contactName: payload.meta?.sender?.name ?? null,
           status: payload.status ?? 'open',
           assigneeName: payload.meta?.assignee?.name ?? null,
-          meta: payload.additional_attributes ?? null,
+          meta: mergeMeta(payload.additional_attributes, payload.custom_attributes),
         })
       }
     } else if (event === 'message_created' || event === 'message_updated') {
@@ -77,7 +91,7 @@ export async function POST(request: NextRequest) {
           contactName: conv?.meta?.sender?.name ?? null,
           status: conv?.status ?? 'open',
           assigneeName: conv?.meta?.assignee?.name ?? null,
-          meta: conv?.additional_attributes ?? null,
+          meta: mergeMeta(conv?.additional_attributes, conv?.custom_attributes),
         })
         const senderType = payload.message_type === 'incoming' ? 'contact'
           : payload.message_type === 'outgoing' ? 'agent'

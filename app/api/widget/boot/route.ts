@@ -4,6 +4,7 @@ import { verifyTurnstile } from '@/lib/auth/turnstile'
 import { errorResponse } from '@/lib/utils'
 import { getLiveChatConfig } from '@/modules/live-chat/lib/settings'
 import { identifierHash } from '@/modules/live-chat/lib/identity'
+import { getAvailability } from '@/modules/live-chat/lib/chatwoot'
 
 // Public boot endpoint the widget loader calls when a visitor clicks the chat
 // bubble. Nothing chat-related loads before that click. When core Turnstile is
@@ -47,13 +48,47 @@ export async function POST(request: NextRequest) {
 }
 
 export async function GET() {
-  // Pre-click config for the loader: bubble copy and whether Turnstile runs.
+  // Pre-click config for the loader: bubble copy, whether Turnstile runs, and
+  // whether the page-journey buffer is consent-gated. The client cannot tell
+  // "banner switched off" from "nothing granted" (core defines
+  // window.__cactusConsent either way), so the server decides: the journey is
+  // gated only when the consent banner is enabled AND it actually carries a
+  // live-chat category for the visitor to grant.
   const config = await getLiveChatConfig()
+  let journeyGate: 'allowed' | 'category' = 'allowed'
+  try {
+    const { prisma } = await import('@/lib/db/prisma')
+    const site = await prisma.siteConfig.findUnique({
+      where: { id: 'singleton' },
+      select: { consentBannerConfig: true },
+    })
+    const banner = site?.consentBannerConfig as { enabled?: boolean; categories?: Array<{ key: string }> } | null
+    if (banner?.enabled && (banner.categories ?? []).some((c) => c.key === 'live-chat')) {
+      journeyGate = 'category'
+    }
+  } catch { /* config unreadable - default to allowed, matching no-banner sites */ }
+  // Bubble copy follows the manual Online/Offline switch: away = honest
+  // "Leave us a message". Best-effort with a short timeout - an unreachable
+  // chat server must not delay the page, so the bubble just defaults to the
+  // online copy.
+  let online = true
+  if (config.serverUrl && config.accountId && config.apiToken) {
+    try {
+      const availability = await Promise.race([
+        getAvailability(config.apiToken, config.serverUrl, config.accountId),
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), 5000)),
+      ])
+      if (availability === 'offline' || availability === 'busy') online = false
+    } catch { /* default to online copy */ }
+  }
+
   return NextResponse.json({
     enabled: !!(config.serverUrl && config.websiteToken),
     label: config.widgetLabel,
     replyTime: config.replyTimeText,
     position: config.widgetPosition,
     turnstileSiteKey: process.env.TURNSTILE_SECRET_KEY ? (process.env.TURNSTILE_SITE_KEY ?? null) : null,
+    journeyGate,
+    online,
   })
 }

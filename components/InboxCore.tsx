@@ -292,7 +292,11 @@ export function InboxCore({ apiBase, compact, onUnread }: {
           <div style={{ fontWeight: 600, fontSize: '0.875rem' }}>{active.contactName || active.contactEmail || `Visitor #${active.id}`}</div>
           <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
             {active.contactEmail ?? 'no email yet'}
-            {typeof active.meta?.started_on_page === 'string' ? ` · on ${active.meta.started_on_page}` : ''}
+            {typeof active.meta?.started_on_page === 'string'
+              ? ` · on ${active.meta.started_on_page}`
+              : typeof active.meta?.referer === 'string'
+                ? ` · on ${String(active.meta.referer).replace(/^https?:\/\/[^/]+/, '') || '/'}`
+                : ''}
           </div>
         </div>
         {active.status === 'open'

@@ -19,6 +19,8 @@ type BootInfo = {
   replyTime: string
   position: 'left' | 'right'
   turnstileSiteKey: string | null
+  journeyGate?: 'allowed' | 'category'
+  online?: boolean
 }
 
 type BootPayload = {
@@ -55,15 +57,17 @@ function turnstileGlobal(): TurnstileGlobal | undefined {
 const JOURNEY_KEY = 'cactus-livechat-journey'
 const JOURNEY_MAX = 25
 
-function journeyAllowed(): boolean {
+// The server decides whether the journey buffer is consent-gated (boot GET's
+// journeyGate): core defines window.__cactusConsent whether or not the banner
+// is enabled, so the client alone cannot tell "no banner" from "not granted".
+function journeyAllowed(gate: 'allowed' | 'category'): boolean {
   if (typeof window === 'undefined') return false
-  const consent = consentMap()
-  if (consent === undefined) return true // no banner on this site
-  return consent['live-chat'] === true
+  if (gate === 'allowed') return true
+  return consentMap()?.['live-chat'] === true
 }
 
-function recordPageView() {
-  if (!journeyAllowed()) return
+function recordPageView(gate: 'allowed' | 'category') {
+  if (!journeyAllowed(gate)) return
   try {
     const raw = sessionStorage.getItem(JOURNEY_KEY)
     const list: Array<{ p: string; t: number }> = raw ? JSON.parse(raw) : []
@@ -107,15 +111,32 @@ function loadScript(src: string): Promise<void> {
 export function WidgetLoader({ apiBase }: { apiBase: string }) {
   const [info, setInfo] = useState<BootInfo | null>(null)
   const [state, setState] = useState<'idle' | 'starting' | 'ready' | 'error'>('idle')
+  const [panelOpen, setPanelOpen] = useState(false)
   const startedRef = useRef(false)
   const turnstileHost = useRef<HTMLDivElement | null>(null)
 
+  // Chatwoot announces its panel opening/closing; when it closes, our bubble
+  // comes back (its own launcher stays hidden), so chat can always be reopened.
   useEffect(() => {
-    recordPageView()
+    const onOpen = () => setPanelOpen(true)
+    const onClose = () => setPanelOpen(false)
+    window.addEventListener('chatwoot:opened', onOpen)
+    window.addEventListener('chatwoot:closed', onClose)
+    return () => {
+      window.removeEventListener('chatwoot:opened', onOpen)
+      window.removeEventListener('chatwoot:closed', onClose)
+    }
+  }, [])
+
+  useEffect(() => {
     let cancelled = false
     fetch(`${apiBase}/widget/boot`)
       .then((r) => (r.ok ? r.json() : null))
-      .then((j: BootInfo | null) => { if (!cancelled && j?.enabled) setInfo(j) })
+      .then((j: BootInfo | null) => {
+        if (cancelled || !j?.enabled) return
+        setInfo(j)
+        recordPageView(j.journeyGate ?? 'allowed')
+      })
       .catch(() => {})
     return () => { cancelled = true }
   }, [apiBase])
@@ -139,6 +160,7 @@ export function WidgetLoader({ apiBase }: { apiBase: string }) {
   const openChat = useCallback(async () => {
     if (startedRef.current) {
       chatwoot()?.toggle('open')
+      setPanelOpen(true)
       return
     }
     if (!info) return
@@ -161,12 +183,15 @@ export function WidgetLoader({ apiBase }: { apiBase: string }) {
         locale: 'en',
         type: 'standard',
       }
-      await loadScript(`${boot.serverUrl.replace(/\/$/, '')}/packs/js/sdk.js`)
-      const sdk = (window as unknown as { chatwootSDK?: { run: (o: { websiteToken: string; baseUrl: string }) => void } }).chatwootSDK
-      if (!sdk) throw new Error('chat sdk missing')
-      sdk.run({ websiteToken: boot.websiteToken, baseUrl: boot.serverUrl.replace(/\/$/, '') })
 
-      window.addEventListener('chatwoot:ready', () => {
+      // The ready listener attaches BEFORE the SDK runs - with warm caches the
+      // event can fire almost immediately, and a listener added after run()
+      // can miss it, leaving the bubble stuck on "Starting…". The interval is
+      // the belt-and-braces fallback for the same race.
+      let readied = false
+      const onReady = () => {
+        if (readied) return
+        readied = true
         startedRef.current = true
         if (boot.identity) {
           chatwoot()?.setUser(boot.identity.identifier, {
@@ -178,10 +203,34 @@ export function WidgetLoader({ apiBase }: { apiBase: string }) {
         const journey = readJourney()
         const attrs: Record<string, unknown> = { started_on_page: window.location.pathname }
         if (journey) attrs.pages_this_visit = journey
-        chatwoot()?.setCustomAttributes(attrs)
+        // Contact attributes stick to the person; conversation attributes are
+        // what the webhook mirrors into the admin inbox's journey line - set
+        // both, and again shortly after in case the conversation is only
+        // created once the visitor sends their first message.
+        const push = () => {
+          chatwoot()?.setCustomAttributes(attrs)
+          ;(window as unknown as { $chatwoot?: { setConversationCustomAttributes?: (a: Record<string, unknown>) => void } })
+            .$chatwoot?.setConversationCustomAttributes?.(attrs)
+        }
+        push()
+        setTimeout(push, 8000)
+        window.addEventListener('chatwoot:on-message', push, { once: true })
         chatwoot()?.toggle('open')
+        setPanelOpen(true)
         setState('ready')
-      }, { once: true })
+      }
+
+      window.addEventListener('chatwoot:ready', onReady, { once: true })
+      const readyPoll = setInterval(() => {
+        if (readied) { clearInterval(readyPoll); return }
+        if (chatwoot()) onReady()
+      }, 500)
+      setTimeout(() => clearInterval(readyPoll), 60_000)
+
+      await loadScript(`${boot.serverUrl.replace(/\/$/, '')}/packs/js/sdk.js`)
+      const sdk = (window as unknown as { chatwootSDK?: { run: (o: { websiteToken: string; baseUrl: string }) => void } }).chatwootSDK
+      if (!sdk) throw new Error('chat sdk missing')
+      sdk.run({ websiteToken: boot.websiteToken, baseUrl: boot.serverUrl.replace(/\/$/, '') })
     } catch {
       setState('error')
     }
@@ -190,17 +239,20 @@ export function WidgetLoader({ apiBase }: { apiBase: string }) {
   if (!info) return null
 
   const side = info.position === 'left' ? { left: '1.25rem' } : { right: '1.25rem' }
+  const away = info.online === false
+  const bubbleLabel = away ? 'Leave us a message' : info.label
+  const bubbleTitle = away ? 'We are away right now - leave a message and we will get back to you' : info.replyTime
 
   return (
     <>
       <div ref={turnstileHost} style={{ position: 'fixed', bottom: '-9999px' }} aria-hidden="true" />
-      {state !== 'ready' && (
+      {!panelOpen && (
         <button
           type="button"
           onClick={openChat}
           disabled={state === 'starting'}
-          aria-label={info.label}
-          title={info.replyTime}
+          aria-label={bubbleLabel}
+          title={bubbleTitle}
           style={{
             position: 'fixed', bottom: '1.25rem', ...side, zIndex: 2147482000,
             display: 'flex', alignItems: 'center', gap: '0.5rem',
@@ -213,7 +265,7 @@ export function WidgetLoader({ apiBase }: { apiBase: string }) {
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
             <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
           </svg>
-          {state === 'starting' ? 'Starting…' : state === 'error' ? 'Chat unavailable' : info.label}
+          {state === 'starting' ? 'Starting…' : state === 'error' ? 'Chat unavailable' : bubbleLabel}
         </button>
       )}
     </>
