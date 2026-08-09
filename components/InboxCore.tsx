@@ -286,7 +286,7 @@ export function InboxCore({ apiBase, compact, onUnread }: {
     // minHeight: 0 on the column and the scroller is what lets the message
     // list shrink inside the fixed-height grid - without it a long thread
     // grows past the box and shoves the composer out of reach.
-    <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0, minHeight: 0 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0, minHeight: 0, maxWidth: '100%', flex: 1, overflow: 'hidden' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem', padding: '0.5rem 0.75rem', borderBottom: '1px solid var(--color-border)' }}>
         <div style={{ minWidth: 0 }}>
           <div style={{ fontWeight: 600, fontSize: '0.875rem' }}>{active.contactName || active.contactEmail || `Visitor #${active.id}`}</div>
@@ -304,7 +304,10 @@ export function InboxCore({ apiBase, compact, onUnread }: {
           : <button type="button" className="btn btn-sm" onClick={() => setStatus('reopen')}>Reopen</button>}
       </div>
       {typeof active.meta?.pages_this_visit === 'string' && (
-        <div style={{ padding: '0.35rem 0.75rem', fontSize: '0.75rem', color: 'var(--color-text-muted)', borderBottom: '1px solid var(--color-border)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+        // minWidth/maxWidth pin this to the pane: a long nowrap journey
+        // otherwise sets the flex column's min-content width and shoves the
+        // whole console (composer included) off the screen.
+        <div style={{ padding: '0.35rem 0.75rem', fontSize: '0.75rem', color: 'var(--color-text-muted)', borderBottom: '1px solid var(--color-border)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0, maxWidth: '100%' }}
           title={active.meta.pages_this_visit}>
           Journey: {active.meta.pages_this_visit}
         </div>
@@ -394,8 +397,8 @@ export function InboxCore({ apiBase, compact, onUnread }: {
       background: 'var(--color-bg)',
     }}>
       {compact && activeId !== null ? (
-        <div style={{ display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-          <button type="button" className="btn btn-sm" style={{ margin: '0.4rem', alignSelf: 'flex-start' }} onClick={() => setActiveId(null)}>← All conversations</button>
+        <div style={{ display: 'flex', flexDirection: 'column', minHeight: 0, minWidth: 0, height: '100%', overflow: 'hidden' }}>
+          <button type="button" className="btn btn-sm" style={{ margin: '0.4rem', alignSelf: 'flex-start', flexShrink: 0 }} onClick={() => setActiveId(null)}>← All conversations</button>
           {threadPane}
         </div>
       ) : compact ? listPane : (<>{listPane}{threadPane}</>)}
