@@ -22,10 +22,9 @@ export async function GET() {
 
   try {
     const profile = await getProfilePubsubToken(agentToken, config.serverUrl)
-    if (config.accountId) {
-      // Best-effort presence: being on the inbox counts as online.
-      setAvailability(agentToken, config.serverUrl, config.accountId, 'online').catch(() => {})
-    }
+    // Availability is deliberately NOT touched here: it's the manual
+    // Online/Offline switch on the inbox (see the availability route), and
+    // auto-flagging on page-open would fight a chosen Offline.
     return NextResponse.json({
       serverUrl: config.serverUrl,
       pubsubToken: profile.pubsubToken,

@@ -143,6 +143,19 @@ export async function getProfilePubsubToken(agentToken: string, serverUrl: strin
   return { pubsubToken: json.pubsub_token, accountId: json.account_id, agentId: json.id }
 }
 
+export async function getAvailability(agentToken: string, serverUrl: string, accountId: number): Promise<'online' | 'offline' | 'busy' | null> {
+  const res = await fetch(`${serverUrl.replace(/\/$/, '')}/api/v1/profile`, {
+    headers: { api_access_token: agentToken },
+    signal: AbortSignal.timeout(15_000),
+    cache: 'no-store',
+  })
+  if (!res.ok) return null
+  const json = await res.json() as { accounts?: Array<{ id: number; availability?: string; availability_status?: string }> }
+  const account = (json.accounts ?? []).find((a) => a.id === accountId) ?? (json.accounts ?? [])[0]
+  const value = account?.availability_status ?? account?.availability
+  return value === 'online' || value === 'offline' || value === 'busy' ? value : null
+}
+
 export async function setAvailability(agentToken: string, serverUrl: string, accountId: number, availability: 'online' | 'offline' | 'busy') {
   const res = await fetch(`${serverUrl.replace(/\/$/, '')}/api/v1/profile/availability`, {
     method: 'POST',

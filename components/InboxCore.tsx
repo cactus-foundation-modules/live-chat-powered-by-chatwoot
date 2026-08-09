@@ -107,6 +107,8 @@ export function InboxCore({ apiBase, compact, onUnread }: {
   const [error, setError] = useState('')
   const [canned, setCanned] = useState<Canned[]>([])
   const [showCanned, setShowCanned] = useState(false)
+  const [availability, setAvailability] = useState<'online' | 'offline' | 'busy' | null>(null)
+  const [availabilityBusy, setAvailabilityBusy] = useState(false)
   const activeIdRef = useRef<number | null>(null)
   useEffect(() => { activeIdRef.current = activeId }, [activeId])
   const scrollRef = useRef<HTMLDivElement | null>(null)
@@ -149,7 +151,25 @@ export function InboxCore({ apiBase, compact, onUnread }: {
     fetch(`${apiBase}/admin/canned`).then((r) => (r.ok ? r.json() : null)).then((j) => {
       if (j?.canned) setCanned(j.canned)
     }).catch(() => {})
+    fetch(`${apiBase}/admin/availability`).then((r) => (r.ok ? r.json() : null)).then((j) => {
+      if (j?.availability) setAvailability(j.availability)
+    }).catch(() => {})
   }, [apiBase])
+
+  async function toggleAvailability() {
+    const next = availability === 'online' ? 'offline' : 'online'
+    setAvailabilityBusy(true)
+    try {
+      const res = await fetch(`${apiBase}/admin/availability`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ availability: next }),
+      })
+      if (res.ok) setAvailability(next)
+    } catch { /* stays as-is */ } finally {
+      setAvailabilityBusy(false)
+    }
+  }
 
   useLiveChatRealtime(apiBase, useCallback((event: string, data: unknown) => {
     const payload = data as { conversation?: { id?: number }; conversation_id?: number; id?: number } | undefined
@@ -207,13 +227,29 @@ export function InboxCore({ apiBase, compact, onUnread }: {
   const active = conversations.find((c) => c.id === activeId) ?? null
   const listPane = (
     <div style={{ borderRight: compact ? 'none' : '1px solid var(--color-border)', overflowY: 'auto', minWidth: 0 }}>
-      <div style={{ display: 'flex', gap: '0.25rem', padding: '0.5rem' }}>
+      <div style={{ display: 'flex', gap: '0.25rem', padding: '0.5rem', alignItems: 'center' }}>
         {(['open', 'resolved'] as const).map((t) => (
           <button key={t} type="button" className={tab === t ? 'btn btn-primary btn-sm' : 'btn btn-sm'}
             onClick={() => { setTab(t); setActiveId(null); loadList(t) }}>
             {t === 'open' ? 'Open' : 'Resolved'}
           </button>
         ))}
+        <button
+          type="button"
+          className="btn btn-sm"
+          disabled={availabilityBusy || availability === null}
+          onClick={toggleAvailability}
+          title={availability === 'online'
+            ? 'Customers see chat as available. Click to go offline.'
+            : 'Customers see chat as away. Click to go online.'}
+          style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '0.35rem' }}
+        >
+          <span aria-hidden="true" style={{
+            width: '0.55rem', height: '0.55rem', borderRadius: '999px', display: 'inline-block',
+            background: availability === 'online' ? 'var(--color-success, #16a34a)' : 'var(--color-border-strong, #9ca3af)',
+          }} />
+          {availability === null ? '…' : availability === 'online' ? 'Online' : 'Offline'}
+        </button>
       </div>
       {conversations.length === 0 && (
         <div style={{ padding: '1rem', color: 'var(--color-text-muted)', fontSize: '0.875rem' }}>
@@ -247,7 +283,10 @@ export function InboxCore({ apiBase, compact, onUnread }: {
   )
 
   const threadPane = active ? (
-    <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+    // minHeight: 0 on the column and the scroller is what lets the message
+    // list shrink inside the fixed-height grid - without it a long thread
+    // grows past the box and shoves the composer out of reach.
+    <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0, minHeight: 0 }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem', padding: '0.5rem 0.75rem', borderBottom: '1px solid var(--color-border)' }}>
         <div style={{ minWidth: 0 }}>
           <div style={{ fontWeight: 600, fontSize: '0.875rem' }}>{active.contactName || active.contactEmail || `Visitor #${active.id}`}</div>
@@ -266,7 +305,7 @@ export function InboxCore({ apiBase, compact, onUnread }: {
           Journey: {active.meta.pages_this_visit}
         </div>
       )}
-      <div ref={scrollRef} style={{ flex: 1, overflowY: 'auto', padding: '0.75rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+      <div ref={scrollRef} style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '0.75rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
         {messages.filter((m) => !m.isPrivate).map((m) => (
           <div key={m.id} style={{
             alignSelf: m.senderType === 'contact' ? 'flex-start' : 'flex-end',

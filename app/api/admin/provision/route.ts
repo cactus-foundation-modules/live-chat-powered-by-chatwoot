@@ -253,6 +253,9 @@ export async function POST(request: NextRequest) {
           `  owner.save!`,
           `end`,
           `AccountUser.find_by(account: account, user: owner) || AccountUser.create!(account: account, user: owner, role: :administrator)`,
+          // Availability is a manual switch in the Cactus inbox; Chatwoot's
+          // idle auto-offline would keep flipping it back on its own.
+          `account.update!(auto_offline: false) if account.respond_to?(:auto_offline)`,
           `InboxMember.find_by(inbox: inbox, user: owner) || InboxMember.create!(inbox: inbox, user: owner)`,
           `wh = '${siteUrl.replace(/\/$/, '')}/api/m/live-chat/webhook?token=${state.webhookToken}'`,
           `account.webhooks.create!(url: wh, subscriptions: %w[conversation_created conversation_status_changed conversation_updated message_created message_updated]) unless account.webhooks.exists?(url: wh)`,
