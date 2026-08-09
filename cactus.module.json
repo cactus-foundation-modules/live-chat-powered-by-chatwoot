@@ -1,0 +1,42 @@
+{
+  "name": "live-chat",
+  "version": "0.1.0",
+  "tablePrefix": "lc_",
+  "description": "Live Chat Powered By Chatwoot - self-hosted live chat with attachments, canned replies and a full inbox in Cactus admin, answered from the site, the admin, or the Chatwoot mobile app.",
+  "requiresCoreVersion": "0.5.986",
+  "permissions": [
+    "livechat.view",
+    "livechat.reply",
+    "livechat.manage"
+  ],
+  "navEntries": [
+    { "label": "Live Chat", "path": "/live-chat", "icon": "message-circle", "permission": "livechat.view" }
+  ],
+  "settingsTabs": [
+    { "id": "live-chat", "label": "Live Chat", "permission": "livechat.manage", "import": "./components/SettingsTab", "component": "LiveChatSettingsTab" }
+  ],
+  "extensionPoints": [
+    { "point": "contact-form.submission-detail", "id": "live-chat-history", "permission": "livechat.view", "import": "./components/SubmissionChatPanel", "component": "SubmissionChatPanel" },
+    { "point": "contact-form.inbox-actions", "id": "live-chat-inbox-link", "permission": "livechat.view", "import": "./components/InboxLinkButton", "component": "InboxLinkButton" },
+    { "point": "core.backup-page", "id": "live-chat-backups", "permission": "livechat.manage", "import": "./components/BackupCard", "component": "LiveChatBackupCard" }
+  ],
+  "puckBlocks": [
+    {
+      "type": "LiveChatWidget",
+      "import": "./components/LiveChatBlock",
+      "rscImport": "./components/LiveChatBlock.rsc",
+      "component": "liveChatBlockComponent",
+      "rscComponent": "liveChatBlockRscComponent"
+    }
+  ],
+  "cookieCategories": ["Live chat"],
+  "requiredEnvVars": [
+    { "name": "ENCRYPTION_KEY", "required": true },
+    { "name": "CRON_SECRET", "required": false }
+  ],
+  "teardown": ["lc_settings", "lc_conversations", "lc_messages", "lc_admin_tokens"],
+  "cronJobs": [
+    { "path": "/api/m/live-chat/cron/backup", "schedule": "40 2 * * *" },
+    { "path": "/api/m/live-chat/cron/retention", "schedule": "20 4 * * *" }
+  ]
+}
