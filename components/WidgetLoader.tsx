@@ -221,11 +221,24 @@ export function WidgetLoader({ apiBase }: { apiBase: string }) {
       }
 
       window.addEventListener('chatwoot:ready', onReady, { once: true })
+      // Fallback for a missed ready event - but only once the panel has REAL
+      // size. $chatwoot existing alone is not readiness: while the chat
+      // server is still booting (it restarts for updates), the SDK global
+      // appears but the panel stays 0x0, and trusting it hid the bubble over
+      // a blank void.
       const readyPoll = setInterval(() => {
         if (readied) { clearInterval(readyPoll); return }
-        if (chatwoot()) onReady()
+        const holder = document.querySelector('.woot-widget-holder')
+        if (chatwoot() && holder && holder.getBoundingClientRect().height > 50) onReady()
       }, 500)
-      setTimeout(() => clearInterval(readyPoll), 60_000)
+      // Server unreachable or mid-boot: give up loudly instead of spinning.
+      setTimeout(() => {
+        clearInterval(readyPoll)
+        if (!readied) {
+          document.querySelector('.woot-widget-holder')?.remove()
+          setState('error')
+        }
+      }, 45_000)
 
       await loadScript(`${boot.serverUrl.replace(/\/$/, '')}/packs/js/sdk.js`)
       const sdk = (window as unknown as { chatwootSDK?: { run: (o: { websiteToken: string; baseUrl: string }) => void } }).chatwootSDK
@@ -249,7 +262,7 @@ export function WidgetLoader({ apiBase }: { apiBase: string }) {
       {!panelOpen && (
         <button
           type="button"
-          onClick={openChat}
+          onClick={state === 'error' ? () => window.location.reload() : openChat}
           disabled={state === 'starting'}
           aria-label={bubbleLabel}
           title={bubbleTitle}
@@ -265,7 +278,7 @@ export function WidgetLoader({ apiBase }: { apiBase: string }) {
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
             <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
           </svg>
-          {state === 'starting' ? 'Starting…' : state === 'error' ? 'Chat unavailable' : bubbleLabel}
+          {state === 'starting' ? 'Starting…' : state === 'error' ? 'Chat unavailable - tap to retry' : bubbleLabel}
         </button>
       )}
     </>
