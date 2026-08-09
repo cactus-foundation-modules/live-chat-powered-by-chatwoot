@@ -16,7 +16,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
   if (!Number.isInteger(id)) return errorResponse('Bad conversation id')
   const [conversation, messages] = await Promise.all([getConversation(id), listMessages(id)])
   if (!conversation) return errorResponse('Not found', 404)
-  return NextResponse.json({ conversation, messages })
+  return NextResponse.json({ conversation, messages }, { headers: { 'Cache-Control': 'no-store' } })
 }
 
 const ActionBody = z.object({ action: z.enum(['resolve', 'reopen', 'read']) })

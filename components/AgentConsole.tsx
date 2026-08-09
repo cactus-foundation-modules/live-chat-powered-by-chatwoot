@@ -16,7 +16,9 @@ export function AgentConsole({ apiBase, position }: { apiBase: string; position:
 
   const poll = useCallback(async () => {
     try {
-      const res = await fetch(`${apiBase}/admin/conversations?status=open`)
+      // no-store matters: without it the browser can serve this same-URL GET
+      // from cache, and the badge sits on a stale count until a hard refresh.
+      const res = await fetch(`${apiBase}/admin/conversations?status=open`, { cache: 'no-store' })
       if (res.ok) {
         const json = await res.json() as { unread: number }
         setUnread(json.unread)
@@ -24,16 +26,22 @@ export function AgentConsole({ apiBase, position }: { apiBase: string; position:
     } catch { /* next poll */ }
   }, [apiBase])
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- delegating to async helper; all setState calls are after awaits
   useEffect(() => {
     poll()
     const t = setInterval(poll, 30_000)
     return () => clearInterval(t)
   }, [poll])
 
-  // Any conversation event refreshes the count immediately - the webhook has
-  // usually landed in the mirror by the time the fetch returns, and the 30s
-  // poll mops up any race.
-  useLiveChatRealtime(apiBase, useCallback(() => { poll() }, [poll]))
+  // Any conversation event refreshes the count - staggered, because the
+  // socket beats the webhook: the event arrives straight from the chat server
+  // while the mirror is still being written via the webhook, so the first
+  // read usually sees the OLD count. Retries at 2.5s and 8s catch it.
+  useLiveChatRealtime(apiBase, useCallback(() => {
+    poll()
+    setTimeout(poll, 2500)
+    setTimeout(poll, 8000)
+  }, [poll]))
 
   const side = position === 'left' ? { left: '1.25rem' } : { right: '1.25rem' }
 

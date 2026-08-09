@@ -11,5 +11,6 @@ export async function GET(request: NextRequest) {
 
   const status = request.nextUrl.searchParams.get('status') === 'resolved' ? 'resolved' : 'open'
   const [conversations, unread] = await Promise.all([listConversations(status), totalUnread()])
-  return NextResponse.json({ conversations, unread })
+  // Live data - never let a browser or proxy serve it stale.
+  return NextResponse.json({ conversations, unread }, { headers: { 'Cache-Control': 'no-store' } })
 }

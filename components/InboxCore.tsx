@@ -217,7 +217,9 @@ export function InboxCore({ apiBase, compact, onUnread }: {
 
   const loadList = useCallback(async (which: 'open' | 'resolved' = tab) => {
     try {
-      const res = await fetch(`${apiBase}/admin/conversations?status=${which}`)
+      // no-store throughout: browsers may serve repeated same-URL GETs from
+      // cache, which froze the list and the unread count until a hard refresh.
+      const res = await fetch(`${apiBase}/admin/conversations?status=${which}`, { cache: 'no-store' })
       if (!res.ok) return
       const json = await res.json() as { conversations: Conversation[]; unread: number }
       setConversations(json.conversations)
@@ -227,7 +229,7 @@ export function InboxCore({ apiBase, compact, onUnread }: {
 
   const loadThread = useCallback(async (id: number) => {
     try {
-      const res = await fetch(`${apiBase}/admin/conversations/${id}`)
+      const res = await fetch(`${apiBase}/admin/conversations/${id}`, { cache: 'no-store' })
       if (!res.ok) return
       const json = await res.json() as { messages: Message[] }
       setMessages(json.messages)
@@ -250,10 +252,10 @@ export function InboxCore({ apiBase, compact, onUnread }: {
   }, [loadList, loadThread])
 
   useEffect(() => {
-    fetch(`${apiBase}/admin/canned`).then((r) => (r.ok ? r.json() : null)).then((j) => {
+    fetch(`${apiBase}/admin/canned`, { cache: 'no-store' }).then((r) => (r.ok ? r.json() : null)).then((j) => {
       if (j?.canned) setCanned(j.canned)
     }).catch(() => {})
-    fetch(`${apiBase}/admin/availability`).then((r) => (r.ok ? r.json() : null)).then((j) => {
+    fetch(`${apiBase}/admin/availability`, { cache: 'no-store' }).then((r) => (r.ok ? r.json() : null)).then((j) => {
       if (j?.availability) setAvailability(j.availability)
     }).catch(() => {})
   }, [apiBase])
@@ -285,9 +287,16 @@ export function InboxCore({ apiBase, compact, onUnread }: {
       setTyping((t) => ({ ...t, [convId]: false }))
       return
     }
-    // Anything else that names a conversation: refresh. Cheap and correct.
-    loadList()
-    if (convId && convId === activeIdRef.current) loadThread(convId)
+    // Anything else that names a conversation: refresh - staggered, because
+    // the socket event beats the webhook that writes the mirror, so the first
+    // read usually still sees the old state.
+    const refresh = () => {
+      loadList()
+      if (convId && convId === activeIdRef.current) loadThread(convId)
+    }
+    refresh()
+    setTimeout(refresh, 2500)
+    setTimeout(refresh, 8000)
   }, [loadList, loadThread]))
 
   useEffect(() => {
