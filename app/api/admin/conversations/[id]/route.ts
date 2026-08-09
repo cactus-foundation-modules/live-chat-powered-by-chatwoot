@@ -5,6 +5,7 @@ import { hasPermission } from '@/lib/permissions/check'
 import { errorResponse } from '@/lib/utils'
 import { clearUnread, getAgentToken, getConversation, listMessages } from '@/modules/live-chat/lib/db'
 import { ChatwootError, markConversationRead, toggleConversationStatus } from '@/modules/live-chat/lib/chatwoot'
+import { syncChatNotification } from '@/modules/live-chat/lib/notify'
 
 export async function GET(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const user = await getSessionFromCookie()
@@ -35,6 +36,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     if (parsed.data.action === 'read') {
       await markConversationRead(id, agentToken)
       await clearUnread(id)
+      syncChatNotification().catch(() => {})
     } else {
       await toggleConversationStatus(id, parsed.data.action === 'resolve' ? 'resolved' : 'open', agentToken)
     }

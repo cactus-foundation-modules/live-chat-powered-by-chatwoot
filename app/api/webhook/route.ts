@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getLiveChatConfig } from '@/modules/live-chat/lib/settings'
 import { insertMessage, upsertConversation } from '@/modules/live-chat/lib/db'
+import { syncChatNotification } from '@/modules/live-chat/lib/notify'
 
 // Chatwoot webhook ingest. Chatwoot does not sign webhooks, so the URL carries
 // a long random token (?token=...) that must match the configured secret -
@@ -93,6 +94,10 @@ export async function POST(request: NextRequest) {
         })
       }
     }
+    // Keep the rolling admin-bell notification in step with the unread count.
+    syncChatNotification().catch((err) => {
+      console.error('[live-chat] Failed to sync chat notification:', err)
+    })
     // Unhandled events are fine - 200 keeps Chatwoot from retrying.
     return NextResponse.json({ ok: true })
   } catch (err) {
