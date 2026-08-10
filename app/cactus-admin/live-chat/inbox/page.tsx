@@ -1,15 +1,10 @@
-import { getSessionFromCookie } from '@/lib/auth/session'
-import { hasPermission } from '@/lib/permissions/check'
-import { LiveChatClient } from '@/modules/live-chat/components/LiveChatClient'
+import { redirect } from 'next/navigation'
+import { headers } from 'next/headers'
 
-export const metadata = { title: 'Live Chat' }
-
-export default async function LiveChatPage() {
-  const user = await getSessionFromCookie()
-  if (!user) return null
-  if (!await hasPermission(user, 'livechat.view')) {
-    return <div className="alert alert-danger">You do not have permission to view this page.</div>
-  }
-  const canManage = await hasPermission(user, 'livechat.manage')
-  return <LiveChatClient canManage={canManage} />
+// Live chat is now a tab of core's shared Inbox rather than a screen of its own
+// (see components/InboxPanel). This route stays put so old bookmarks and any
+// links left in email notifications still land somewhere sensible.
+export default async function LiveChatInboxRedirect() {
+  const adminPath = (await headers()).get('x-cactus-admin-path') ?? 'cactus-admin'
+  return redirect(`/${adminPath}/inbox?tab=live-chat`)
 }
