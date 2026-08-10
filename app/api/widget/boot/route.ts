@@ -5,6 +5,7 @@ import { errorResponse } from '@/lib/utils'
 import { getLiveChatConfig } from '@/modules/live-chat/lib/settings'
 import { identifierHash } from '@/modules/live-chat/lib/identity'
 import { getAvailability } from '@/modules/live-chat/lib/chatwoot'
+import { CONSENT_CATEGORY } from '@/modules/live-chat/lib/consent'
 
 // Public boot endpoint the widget loader calls when a visitor clicks the chat
 // bubble. Nothing chat-related loads before that click. When core Turnstile is
@@ -49,13 +50,15 @@ export async function POST(request: NextRequest) {
 
 export async function GET() {
   // Pre-click config for the loader: bubble copy, whether Turnstile runs, and
-  // whether the page-journey buffer is consent-gated. The client cannot tell
-  // "banner switched off" from "nothing granted" (core defines
-  // window.__cactusConsent either way), so the server decides: the journey is
-  // gated only when the consent banner is enabled AND it actually carries a
-  // live-chat category for the visitor to grant.
+  // whether live chat is consent-gated at all. The client cannot tell "banner
+  // switched off" from "nothing granted" (core defines window.__cactusConsent
+  // either way), so the server decides: chat is gated only when the consent
+  // banner is enabled AND it actually carries a live-chat category for the
+  // visitor to grant. When it is gated, the bubble itself stays hidden until
+  // that category is granted - so a visitor who has not answered the banner
+  // yet, or who answered and left live chat off, never sees it.
   const config = await getLiveChatConfig()
-  let journeyGate: 'allowed' | 'category' = 'allowed'
+  let consentGate: 'allowed' | 'category' = 'allowed'
   try {
     const { prisma } = await import('@/lib/db/prisma')
     const site = await prisma.siteConfig.findUnique({
@@ -63,8 +66,8 @@ export async function GET() {
       select: { consentBannerConfig: true },
     })
     const banner = site?.consentBannerConfig as { enabled?: boolean; categories?: Array<{ key: string }> } | null
-    if (banner?.enabled && (banner.categories ?? []).some((c) => c.key === 'live-chat')) {
-      journeyGate = 'category'
+    if (banner?.enabled && (banner.categories ?? []).some((c) => c.key === CONSENT_CATEGORY)) {
+      consentGate = 'category'
     }
   } catch { /* config unreadable - default to allowed, matching no-banner sites */ }
   // Bubble copy follows the manual Online/Offline switch: away = honest
@@ -96,7 +99,8 @@ export async function GET() {
     replyTime: config.replyTimeText,
     position: config.widgetPosition,
     turnstileSiteKey: process.env.TURNSTILE_SECRET_KEY ? (process.env.TURNSTILE_SITE_KEY ?? null) : null,
-    journeyGate,
+    consentGate,
+    consentCategory: CONSENT_CATEGORY,
     online,
   })
 }

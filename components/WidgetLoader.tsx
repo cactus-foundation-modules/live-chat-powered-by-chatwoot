@@ -1,15 +1,21 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
+import { CONSENT_CHANGE_EVENT, chatConsentGranted } from '../lib/consent'
 
 // Customer-facing side of the LiveChatWidget block.
 //
 // Privacy behaviour, in order:
+// - Where the site's consent banner carries a live-chat category, the bubble
+//   itself does not render until that category is granted. Someone who has not
+//   answered the banner yet has no decision recorded, so they see nothing; so
+//   does someone who answered and left live chat off. Withdrawing the
+//   permission mid-visit takes the bubble away again (and closes an open
+//   panel) without waiting for a reload.
 // - Nothing chat-related loads until the visitor clicks the bubble. No script,
 //   no cookies, no Chatwoot contact. The bubble is a plain button.
-// - The page journey (this visit only) is buffered in sessionStorage, and only
-//   while allowed: either the site runs no consent banner, or the "live-chat"
-//   category is granted. It leaves the browser only when a chat is opened.
+// - The page journey (this visit only) is buffered in sessionStorage, on the
+//   same permission. It leaves the browser only when a chat is opened.
 // - When core Turnstile is configured, opening chat runs a managed challenge
 //   (invisible for most people) before the widget config is handed out.
 
@@ -19,7 +25,7 @@ type BootInfo = {
   replyTime: string
   position: 'left' | 'right'
   turnstileSiteKey: string | null
-  journeyGate?: 'allowed' | 'category'
+  consentGate?: 'allowed' | 'category'
   online?: boolean
 }
 
@@ -42,10 +48,6 @@ function chatwoot(): ChatwootGlobal | undefined {
   return (window as unknown as { $chatwoot?: ChatwootGlobal }).$chatwoot
 }
 
-function consentMap(): Record<string, boolean> | undefined {
-  return (window as unknown as { __cactusConsent?: Record<string, boolean> }).__cactusConsent
-}
-
 type TurnstileGlobal = {
   render: (el: HTMLElement, opts: Record<string, unknown>) => string
 }
@@ -66,17 +68,24 @@ function rememberPanelState(state: 'open' | 'closed') {
   try { sessionStorage.setItem(ACTIVE_KEY, state) } catch { /* storage unavailable */ }
 }
 
-// The server decides whether the journey buffer is consent-gated (boot GET's
-// journeyGate): core defines window.__cactusConsent whether or not the banner
+// The server decides whether chat is consent-gated at all (boot GET's
+// consentGate): core defines window.__cactusConsent whether or not the banner
 // is enabled, so the client alone cannot tell "no banner" from "not granted".
-function journeyAllowed(gate: 'allowed' | 'category'): boolean {
+function chatAllowed(gate: 'allowed' | 'category'): boolean {
   if (typeof window === 'undefined') return false
   if (gate === 'allowed') return true
-  return consentMap()?.['live-chat'] === true
+  return chatConsentGranted()
+}
+
+function forgetVisit() {
+  try {
+    sessionStorage.removeItem(JOURNEY_KEY)
+    sessionStorage.removeItem(ACTIVE_KEY)
+  } catch { /* storage unavailable - nothing to forget */ }
 }
 
 function recordPageView(gate: 'allowed' | 'category') {
-  if (!journeyAllowed(gate)) return
+  if (!chatAllowed(gate)) return
   try {
     const raw = sessionStorage.getItem(JOURNEY_KEY)
     const list: Array<{ p: string; t: number }> = raw ? JSON.parse(raw) : []
@@ -128,6 +137,14 @@ function loadScript(src: string): Promise<void> {
   })
 }
 
+// Core's consent banner announces every decision on a window event, so the
+// grant is read as an external store: no state to fall out of step, and the
+// answer is re-read the moment the visitor changes their mind.
+function subscribeConsent(onChange: () => void): () => void {
+  window.addEventListener(CONSENT_CHANGE_EVENT, onChange)
+  return () => window.removeEventListener(CONSENT_CHANGE_EVENT, onChange)
+}
+
 export function WidgetLoader({ apiBase }: { apiBase: string }) {
   const [info, setInfo] = useState<BootInfo | null>(null)
   const [state, setState] = useState<'idle' | 'starting' | 'ready' | 'error'>('idle')
@@ -155,7 +172,7 @@ export function WidgetLoader({ apiBase }: { apiBase: string }) {
       .then((j: BootInfo | null) => {
         if (cancelled || !j?.enabled) return
         setInfo(j)
-        recordPageView(j.journeyGate ?? 'allowed')
+        recordPageView(j.consentGate ?? 'allowed')
       })
       .catch(() => {})
     return () => { cancelled = true }
@@ -281,20 +298,53 @@ export function WidgetLoader({ apiBase }: { apiBase: string }) {
     }
   }, [apiBase, info, getTurnstileToken])
 
+  // Consent, re-read whenever the visitor answers the banner or changes their
+  // mind. On a site whose banner carries no live-chat category the server
+  // reports gate 'allowed' and this never comes into it.
+  const granted = useSyncExternalStore(subscribeConsent, chatConsentGranted, () => false)
+  const allowed = (info?.consentGate ?? 'allowed') === 'allowed' || granted
+
+  // Permission withdrawn mid-visit: shut the panel, drop the widget's frame and
+  // forget this visit's buffered journey. The already-loaded SDK goes on the
+  // next page load; nothing further is sent in the meantime.
+  const wasAllowedRef = useRef(true)
+  useEffect(() => {
+    if (allowed) {
+      if (!wasAllowedRef.current && info) recordPageView(info.consentGate ?? 'allowed')
+      wasAllowedRef.current = true
+      return
+    }
+    wasAllowedRef.current = false
+    if (startedRef.current) {
+      chatwoot()?.toggle('close')
+      document.querySelector('.woot-widget-holder')?.remove()
+      // Back to square one: a visitor who grants the permission again this
+      // visit gets the bubble, not a hidden panel that no longer exists. The
+      // panel really has closed, so it is announced on the widget's own event
+      // - the same one that brings the bubble back after an ordinary close.
+      startedRef.current = false
+      window.dispatchEvent(new Event('chatwoot:closed'))
+    }
+    forgetVisit()
+  }, [allowed, info])
+
   // Conversation continuity: a visitor who navigated with the panel open gets
   // it reopened on the new page without another click. Runs once per page.
   const autoOpenedRef = useRef(false)
   useEffect(() => {
-    if (!info || autoOpenedRef.current || startedRef.current || state !== 'idle') return
+    if (!info || !allowed || autoOpenedRef.current || startedRef.current || state !== 'idle') return
     let flag: string | null = null
     try { flag = sessionStorage.getItem(ACTIVE_KEY) } catch { /* storage unavailable */ }
     if (flag === 'open') {
       autoOpenedRef.current = true
       openChat()
     }
-  }, [info, state, openChat])
+  }, [info, allowed, state, openChat])
 
-  if (!info) return null
+  // No bubble at all until chat is allowed: a visitor who has not answered the
+  // banner has no decision recorded, and one who declined live chat has a
+  // recorded no. Both land here.
+  if (!info || !allowed) return null
 
   const side = info.position === 'left' ? { left: '1.25rem' } : { right: '1.25rem' }
   const away = info.online === false
