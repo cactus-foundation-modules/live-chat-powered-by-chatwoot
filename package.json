@@ -1,6 +1,6 @@
 {
   "name": "cactus-module-live-chat",
-  "version": "0.1.16",
+  "version": "0.1.17",
   "description": "Live Chat Powered By Chatwoot \u2014 self-hosted live chat for Cactus sites",
   "license": "MIT",
   "private": true

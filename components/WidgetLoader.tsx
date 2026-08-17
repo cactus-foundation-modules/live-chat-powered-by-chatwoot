@@ -1,17 +1,18 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
-import { CONSENT_CHANGE_EVENT, chatConsentGranted } from '../lib/consent'
+import { CONSENT_CHANGE_EVENT, chatConsentGranted, consentAnswered, openConsentSettings } from '../lib/consent'
 
 // Customer-facing side of the LiveChatWidget block.
 //
 // Privacy behaviour, in order:
-// - Where the site's consent banner carries a live-chat category, the bubble
-//   itself does not render until that category is granted. Someone who has not
-//   answered the banner yet has no decision recorded, so they see nothing; so
-//   does someone who answered and left live chat off. Withdrawing the
-//   permission mid-visit takes the bubble away again (and closes an open
-//   panel) without waiting for a reload.
+// - Where the site's consent banner carries a live-chat category, nothing
+//   chat-related runs until that category is granted. The bubble still shows,
+//   but clicking it explains that chat needs the cookie and offers the way to
+//   change that, rather than silently doing nothing - a bubble that vanishes
+//   reads as "chat is gone", not "chat is waiting on you". Withdrawing the
+//   permission mid-visit closes an open panel and drops the widget without
+//   waiting for a reload.
 // - Nothing chat-related loads until the visitor clicks the bubble. No script,
 //   no cookies, no Chatwoot contact. The bubble is a plain button.
 // - The page journey (this visit only) is buffered in sessionStorage, on the
@@ -149,6 +150,9 @@ export function WidgetLoader({ apiBase }: { apiBase: string }) {
   const [info, setInfo] = useState<BootInfo | null>(null)
   const [state, setState] = useState<'idle' | 'starting' | 'ready' | 'error'>('idle')
   const [panelOpen, setPanelOpen] = useState(false)
+  // Shown when someone clicks the bubble while the live-chat category is not
+  // granted: the explanation, and the way to change it.
+  const [consentNotice, setConsentNotice] = useState(false)
   const startedRef = useRef(false)
   const turnstileHost = useRef<HTMLDivElement | null>(null)
 
@@ -303,6 +307,24 @@ export function WidgetLoader({ apiBase }: { apiBase: string }) {
   // reports gate 'allowed' and this never comes into it.
   const granted = useSyncExternalStore(subscribeConsent, chatConsentGranted, () => false)
   const allowed = (info?.consentGate ?? 'allowed') === 'allowed' || granted
+  // Whether they have answered the banner at all decides which of the two
+  // messages they get - re-read on every decision, same store as the grant.
+  const answered = useSyncExternalStore(subscribeConsent, consentAnswered, () => false)
+
+  // Someone who asked for chat, was told it needed the cookie, and then went and
+  // granted it gets the chat they asked for, not the bubble again and a second
+  // click. Only ever set by a click on the blocked bubble.
+  const askedWhileBlockedRef = useRef(false)
+  useEffect(() => {
+    if (!allowed) return
+    // The grant has just made the notice untrue, so it goes rather than lying in
+    // wait to reappear if the permission is withdrawn again later this visit.
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- reacting to a consent decision made outside React; sets one flag to false, no cascade
+    setConsentNotice(false)
+    if (!askedWhileBlockedRef.current) return
+    askedWhileBlockedRef.current = false
+    openChat()
+  }, [allowed, openChat])
 
   // Permission withdrawn mid-visit: shut the panel, drop the widget's frame and
   // forget this visit's buffered journey. The already-loaded SDK goes on the
@@ -341,26 +363,79 @@ export function WidgetLoader({ apiBase }: { apiBase: string }) {
     }
   }, [info, allowed, state, openChat])
 
-  // No bubble at all until chat is allowed: a visitor who has not answered the
-  // banner has no decision recorded, and one who declined live chat has a
-  // recorded no. Both land here.
-  if (!info || !allowed) return null
+  // The block itself is still off, or chat is switched off site-wide: nothing to
+  // draw. Consent is handled below - the bubble stays, the chat does not start.
+  if (!info) return null
 
   const side = info.position === 'left' ? { left: '1.25rem' } : { right: '1.25rem' }
   const away = info.online === false
   const bubbleLabel = away ? 'Leave us a message' : info.label
   const bubbleTitle = away ? 'We are away right now - leave a message and we will get back to you' : info.replyTime
+  const noticeOpen = !allowed && consentNotice
 
   return (
     <>
       <div ref={turnstileHost} style={{ position: 'fixed', bottom: '-9999px' }} aria-hidden="true" />
+      {noticeOpen && (
+        <div
+          role="dialog"
+          aria-label="Live chat needs a cookie"
+          style={{
+            position: 'fixed', bottom: '4.75rem', ...side, zIndex: 2147482000,
+            width: 'min(20rem, calc(100vw - 2.5rem))',
+            background: 'var(--color-surface, #fff)',
+            color: 'var(--color-text, #1c1a17)',
+            border: '1px solid var(--color-border, #e5e0d8)',
+            borderRadius: '0.75rem',
+            padding: '1rem',
+            boxShadow: '0 8px 24px rgba(0,0,0,0.18)',
+            fontSize: '0.875rem', lineHeight: 1.5,
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.5rem' }}>
+            <strong style={{ flex: 1, fontSize: '0.9375rem' }}>Live chat needs a cookie</strong>
+            <button
+              type="button"
+              onClick={() => setConsentNotice(false)}
+              aria-label="Close"
+              style={{
+                background: 'none', border: 'none', cursor: 'pointer', padding: 0,
+                color: 'var(--color-text-muted, #8e856f)', fontSize: '1.125rem', lineHeight: 1,
+              }}
+            >
+              ×
+            </button>
+          </div>
+          <p style={{ margin: '0.5rem 0 0.875rem', color: 'var(--color-text-secondary, #6b6355)' }}>
+            {answered
+              ? 'You have left the live chat cookie switched off, so we cannot start a chat. Switch it on and we will be right with you.'
+              : 'Chat runs on a service that sets its own cookie, so we need your say-so first. Allow the live chat cookie and the chat opens straight away.'}
+          </p>
+          <button
+            type="button"
+            onClick={() => { askedWhileBlockedRef.current = true; openConsentSettings() }}
+            style={{
+              width: '100%', padding: '0.5rem 0.75rem', borderRadius: '0.5rem', border: 'none',
+              background: 'var(--color-accent, #1A5F5A)', color: '#fff',
+              fontSize: '0.875rem', fontWeight: 600, cursor: 'pointer',
+            }}
+          >
+            {answered ? 'Change your cookie choice' : 'Choose your cookies'}
+          </button>
+        </div>
+      )}
       {!panelOpen && (
         <button
           type="button"
-          onClick={state === 'error' ? () => window.location.reload() : openChat}
+          onClick={
+            !allowed
+              ? () => setConsentNotice((open) => !open)
+              : state === 'error' ? () => window.location.reload() : openChat
+          }
           disabled={state === 'starting'}
           aria-label={bubbleLabel}
-          title={bubbleTitle}
+          aria-expanded={!allowed ? noticeOpen : undefined}
+          title={!allowed ? 'Live chat needs the live chat cookie' : bubbleTitle}
           style={{
             position: 'fixed', bottom: '1.25rem', ...side, zIndex: 2147482000,
             display: 'flex', alignItems: 'center', gap: '0.5rem',

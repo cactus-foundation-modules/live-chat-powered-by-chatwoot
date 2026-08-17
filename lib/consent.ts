@@ -23,3 +23,22 @@ export function consentMap(): Record<string, boolean> | undefined {
 export function chatConsentGranted(): boolean {
   return consentMap()?.[CONSENT_CATEGORY] === true
 }
+
+// Core writes its decision cookie on every choice, so whether that cookie exists
+// separates "asked and said no to live chat" from "has not been asked yet" - a
+// distinction window.__cactusConsent deliberately flattens, since both deny.
+// Only the cookie's existence is read here; what is inside it is core's business.
+const CONSENT_COOKIE = 'cactus-consent'
+
+export function consentAnswered(): boolean {
+  if (typeof document === 'undefined') return false
+  return document.cookie.split(';').some((c) => c.trim().startsWith(`${CONSENT_COOKIE}=`))
+}
+
+// Re-opens core's consent banner on its manage view, pre-filled with whatever the
+// visitor chose last time. Optional-chained throughout: on a site with no banner
+// the global is a no-op stub, and chat is not gated there anyway.
+export function openConsentSettings(): void {
+  if (typeof window === 'undefined') return
+  ;(window as unknown as { cactusConsent?: { open?: () => void } }).cactusConsent?.open?.()
+}
