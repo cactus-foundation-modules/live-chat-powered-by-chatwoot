@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="module-art.webp" alt="Live Chat Powered By Chatwoot" width="640" />
+</p>
+
 # Live Chat Powered By Chatwoot
 
 Self-hosted live chat for Cactus sites: customers chat (with attachments) from
