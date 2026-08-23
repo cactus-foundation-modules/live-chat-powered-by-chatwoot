@@ -13,14 +13,27 @@ import { getLiveChatConfig, updateSettings } from '@/modules/live-chat/lib/setti
 // route time ceiling. The admin UI calls POST repeatedly; each response names
 // the next step. State survives in lc_settings.provision_state.
 //
-// Deskwell never runs this - its machine was provisioned by hand and its
-// config arrives via LIVECHAT_* env vars.
+// A pre-provisioned install never runs this - its machine was built by hand and
+// its config arrives via LIVECHAT_* env vars.
+//
+// The Docker image the machine runs. The default is the de-branded Chatwoot
+// build published publicly by cactus-foundation-modules/chatwoot-image, which
+// any Fly account can pull. An install that keeps its own build (a private
+// registry, a pinned tag) names it in the setup form, or sets LIVECHAT_IMAGE on
+// the Vercel project to change the default for that install. It used to be a
+// private registry.fly.io image that only one Fly organisation could pull.
 
 const FLY_API = 'https://api.machines.dev/v1'
-const IMAGE = 'registry.fly.io/deskwell-chat:latest' // public per-install images can replace this later
+const DEFAULT_IMAGE = 'ghcr.io/cactus-foundation-modules/chatwoot:latest'
+function defaultImage(): string {
+  return process.env.LIVECHAT_IMAGE?.trim() || DEFAULT_IMAGE
+}
+// A plain image reference: registry/path[:tag|@digest]. No spaces, no shell.
+const IMAGE_REF = /^[a-z0-9][a-z0-9._-]*(?::[0-9]+)?(?:\/[a-z0-9][a-z0-9._-]*)*(?::[A-Za-z0-9._-]+|@sha256:[a-f0-9]{64})?$/
 
 type ProvisionState = {
   step: string
+  image?: string
   flyToken?: string
   dbUrl?: string
   appName?: string
@@ -80,6 +93,7 @@ const StartBody = z.object({
   dbUrl: z.string().url().startsWith('postgres'),
   appName: z.string().regex(/^[a-z][a-z0-9-]{3,28}$/, 'App name: lowercase letters, numbers, dashes'),
   region: z.string().regex(/^[a-z]{3}$/).default('lhr'),
+  image: z.string().trim().optional().refine((v) => !v || IMAGE_REF.test(v), 'Image: a plain registry reference like ghcr.io/org/name:tag'),
 })
 const StepBody = z.object({ action: z.literal('step') })
 const ResetBody = z.object({ action: z.literal('reset') })
@@ -108,6 +122,7 @@ export async function POST(request: NextRequest) {
   if (parsed.data.action === 'start') {
     if (config.serverUrl) return errorResponse('Live chat is already configured')
     const { flyToken, dbUrl, appName, region } = parsed.data
+    const image = parsed.data.image || defaultImage()
     // Validate the database: reachable and empty.
     const pg = new PgClient({ connectionString: dbUrl, ssl: dbUrl.includes('sslmode=require') ? { rejectUnauthorized: false } : undefined, connectionTimeoutMillis: 15_000 })
     try {
@@ -126,7 +141,7 @@ export async function POST(request: NextRequest) {
       return errorResponse('Fly.io rejected that token')
     }
     state = {
-      step: 'create-app', flyToken, dbUrl, appName, region,
+      step: 'create-app', image, flyToken, dbUrl, appName, region,
       secretKeyBase: crypto.randomUUID().replaceAll('-', '') + crypto.randomUUID().replaceAll('-', ''),
       webhookToken: crypto.randomUUID().replaceAll('-', ''),
       backupToken: crypto.randomUUID().replaceAll('-', ''),
@@ -169,7 +184,7 @@ export async function POST(request: NextRequest) {
             name: 'prepare',
             region: state.region,
             config: {
-              image: IMAGE,
+              image: state.image ?? defaultImage(),
               guest: { cpu_kind: 'shared', cpus: 1, memory_mb: 2048 },
               env: machineEnv(state, siteUrl),
               auto_destroy: true,
@@ -199,7 +214,7 @@ export async function POST(request: NextRequest) {
             name: 'chatwoot',
             region: state.region,
             config: {
-              image: IMAGE,
+              image: state.image ?? defaultImage(),
               guest: { cpu_kind: 'shared', cpus: 1, memory_mb: 2048 },
               env: machineEnv(state, siteUrl),
               mounts: [{ volume: state.volumeId, path: '/data' }],

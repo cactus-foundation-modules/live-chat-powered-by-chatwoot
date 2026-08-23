@@ -45,7 +45,7 @@ export function LiveChatSettingsTab() {
   const [busy, setBusy] = useState(false)
   const [agentToken, setAgentToken] = useState('')
   const [widget, setWidget] = useState({ widgetPosition: 'right' as 'left' | 'right', widgetLabel: '', hideLabelOnMobile: false, replyTimeText: '', retentionMonths: 12 })
-  const [prov, setProv] = useState({ flyToken: '', dbUrl: '', appName: '', running: false, step: '' })
+  const [prov, setProv] = useState({ flyToken: '', dbUrl: '', appName: '', image: '', running: false, step: '' })
   const [revealed, setRevealed] = useState<{ email: string; password: string | null } | null>(null)
 
   const load = useCallback(async () => {
@@ -149,7 +149,7 @@ export function LiveChatSettingsTab() {
     setErr('')
     try {
       const body = action === 'start'
-        ? { action, flyToken: prov.flyToken, dbUrl: prov.dbUrl, appName: prov.appName, region: 'lhr' }
+        ? { action, flyToken: prov.flyToken, dbUrl: prov.dbUrl, appName: prov.appName, region: 'lhr', image: prov.image.trim() || undefined }
         : { action }
       const res = await fetch(`${API_BASE}/admin/provision`, {
         method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body),
@@ -235,6 +235,9 @@ export function LiveChatSettingsTab() {
             <input value={prov.dbUrl} placeholder="postgres://user:pass@host:5432/chat" onChange={(e) => setProv({ ...prov, dbUrl: e.target.value })} /></div>
           <div className="field"><label>App name (becomes app-name.fly.dev)</label>
             <input value={prov.appName} placeholder="mysite-chat" onChange={(e) => setProv({ ...prov, appName: e.target.value })} /></div>
+          <div className="field"><label>Chat server image (optional)</label>
+            <input value={prov.image} placeholder="ghcr.io/cactus-foundation-modules/chatwoot:latest" onChange={(e) => setProv({ ...prov, image: e.target.value })} />
+            <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>Leave blank for the standard build. Only change this if you publish your own Chatwoot image.</span></div>
           <button type="button" className="btn btn-primary btn-sm" disabled={prov.running || !prov.flyToken || !prov.dbUrl || !prov.appName}
             onClick={() => provision('start')}>
             {prov.running ? `Building… (${prov.step || 'starting'})` : 'Build my chat server'}
