@@ -96,6 +96,7 @@ export async function GET() {
   return NextResponse.json({
     enabled,
     label: config.widgetLabel,
+    hideLabelOnMobile: config.hideLabelOnMobile,
     replyTime: config.replyTimeText,
     position: config.widgetPosition,
     turnstileSiteKey: process.env.TURNSTILE_SECRET_KEY ? (process.env.TURNSTILE_SITE_KEY ?? null) : null,

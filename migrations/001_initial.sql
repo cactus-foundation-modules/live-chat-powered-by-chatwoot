@@ -20,6 +20,7 @@ CREATE TABLE IF NOT EXISTS "lc_settings" (
   "widget_label" TEXT NOT NULL DEFAULT 'Chat with us',
   "reply_time_text" TEXT NOT NULL DEFAULT 'We usually reply within a few hours',
   "retention_months" INTEGER NOT NULL DEFAULT 12,
+  "hide_label_on_mobile" BOOLEAN NOT NULL DEFAULT false,
   "provision_state" JSONB,
   "created_at" TIMESTAMPTZ NOT NULL DEFAULT now(),
   "updated_at" TIMESTAMPTZ NOT NULL DEFAULT now()

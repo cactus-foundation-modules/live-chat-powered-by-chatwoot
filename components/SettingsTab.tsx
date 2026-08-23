@@ -18,6 +18,7 @@ type Settings = {
   hasBackupToken: boolean
   widgetPosition: 'left' | 'right'
   widgetLabel: string
+  hideLabelOnMobile: boolean
   replyTimeText: string
   retentionMonths: number
   hasOwnAgentToken: boolean
@@ -43,7 +44,7 @@ export function LiveChatSettingsTab() {
   const [err, setErr] = useState('')
   const [busy, setBusy] = useState(false)
   const [agentToken, setAgentToken] = useState('')
-  const [widget, setWidget] = useState({ widgetPosition: 'right' as 'left' | 'right', widgetLabel: '', replyTimeText: '', retentionMonths: 12 })
+  const [widget, setWidget] = useState({ widgetPosition: 'right' as 'left' | 'right', widgetLabel: '', hideLabelOnMobile: false, replyTimeText: '', retentionMonths: 12 })
   const [prov, setProv] = useState({ flyToken: '', dbUrl: '', appName: '', running: false, step: '' })
   const [revealed, setRevealed] = useState<{ email: string; password: string | null } | null>(null)
 
@@ -53,7 +54,7 @@ export function LiveChatSettingsTab() {
       if (!res.ok) return
       const s = await res.json() as Settings
       setSettings(s)
-      setWidget({ widgetPosition: s.widgetPosition, widgetLabel: s.widgetLabel, replyTimeText: s.replyTimeText, retentionMonths: s.retentionMonths })
+      setWidget({ widgetPosition: s.widgetPosition, widgetLabel: s.widgetLabel, hideLabelOnMobile: s.hideLabelOnMobile, replyTimeText: s.replyTimeText, retentionMonths: s.retentionMonths })
     } catch { /* retry on next open */ }
   }, [])
 
@@ -324,6 +325,14 @@ export function LiveChatSettingsTab() {
         <h3 style={{ fontSize: '0.9375rem', fontWeight: 600, marginBottom: '0.75rem' }}>Widget</h3>
         <div className="field"><label>Bubble label</label>
           <input value={widget.widgetLabel} onChange={(e) => setWidget({ ...widget, widgetLabel: e.target.value })} /></div>
+        <div className="field">
+          <label style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', cursor: 'pointer' }}>
+            <input type="checkbox" checked={widget.hideLabelOnMobile}
+              onChange={(e) => setWidget({ ...widget, hideLabelOnMobile: e.target.checked })} />
+            <span>Hide the label on phones</span>
+          </label>
+          <span className="field-hint">Leaves just the round chat icon on small screens, so the bubble stops sitting on top of buttons. Desktop keeps the words.</span>
+        </div>
         <div className="field"><label>Reply-time expectation (shown on the bubble tooltip)</label>
           <input value={widget.replyTimeText} onChange={(e) => setWidget({ ...widget, replyTimeText: e.target.value })} /></div>
         <div className="field"><label>Corner</label>

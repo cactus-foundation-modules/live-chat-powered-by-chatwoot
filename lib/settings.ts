@@ -26,6 +26,7 @@ export type LiveChatConfig = {
   backupToken: string | null
   widgetPosition: 'left' | 'right'
   widgetLabel: string
+  hideLabelOnMobile: boolean
   replyTimeText: string
   retentionMonths: number
   chatLoginEmail: string | null
@@ -70,6 +71,7 @@ export async function getLiveChatConfig(): Promise<LiveChatConfig> {
     backupToken: env.LIVECHAT_BACKUP_TOKEN ?? dec(row?.backup_token_encrypted),
     widgetPosition: str(row?.widget_position) === 'left' ? 'left' : 'right',
     widgetLabel: str(row?.widget_label) ?? 'Chat with us',
+    hideLabelOnMobile: row?.hide_label_on_mobile === true,
     replyTimeText: str(row?.reply_time_text) ?? 'We usually reply within a few hours',
     retentionMonths: num(row?.retention_months) ?? 12,
     chatLoginEmail: env.LIVECHAT_LOGIN_EMAIL ?? str(row?.chat_login_email),
@@ -102,6 +104,7 @@ export type UpdatableSettings = Partial<{
   backupToken: string
   widgetPosition: 'left' | 'right'
   widgetLabel: string
+  hideLabelOnMobile: boolean
   replyTimeText: string
   retentionMonths: number
   provisionState: unknown
@@ -130,6 +133,7 @@ export async function updateSettings(data: UpdatableSettings): Promise<void> {
     backup_token_encrypted: enc(data.backupToken, row?.backup_token_encrypted),
     widget_position: keep<string>(data.widgetPosition, row?.widget_position, 'right'),
     widget_label: keep<string>(data.widgetLabel, row?.widget_label, 'Chat with us'),
+    hide_label_on_mobile: keep<boolean>(data.hideLabelOnMobile, row?.hide_label_on_mobile, false),
     reply_time_text: keep<string>(data.replyTimeText, row?.reply_time_text, 'We usually reply within a few hours'),
     retention_months: keep<number>(data.retentionMonths, row?.retention_months, 12),
     provision_state: data.provisionState !== undefined
@@ -144,13 +148,13 @@ export async function updateSettings(data: UpdatableSettings): Promise<void> {
       "id", "server_url", "account_id", "inbox_id", "website_token",
       "hmac_token_encrypted", "api_token_encrypted", "webhook_token",
       "fly_app", "fly_token_encrypted", "backup_endpoint", "backup_token_encrypted",
-      "widget_position", "widget_label", "reply_time_text", "retention_months",
+      "widget_position", "widget_label", "hide_label_on_mobile", "reply_time_text", "retention_months",
       "provision_state", "chat_login_email", "chat_login_password_encrypted", "updated_at"
     ) VALUES (
       'singleton', ${values.server_url}, ${values.account_id}, ${values.inbox_id}, ${values.website_token},
       ${values.hmac_token_encrypted}, ${values.api_token_encrypted}, ${values.webhook_token},
       ${values.fly_app}, ${values.fly_token_encrypted}, ${values.backup_endpoint}, ${values.backup_token_encrypted},
-      ${values.widget_position}, ${values.widget_label}, ${values.reply_time_text}, ${values.retention_months},
+      ${values.widget_position}, ${values.widget_label}, ${values.hide_label_on_mobile}, ${values.reply_time_text}, ${values.retention_months},
       ${values.provision_state}::jsonb, ${values.chat_login_email}, ${values.chat_login_password_encrypted}, now()
     )
     ON CONFLICT ("id") DO UPDATE SET
@@ -167,6 +171,7 @@ export async function updateSettings(data: UpdatableSettings): Promise<void> {
       "backup_token_encrypted" = EXCLUDED."backup_token_encrypted",
       "widget_position" = EXCLUDED."widget_position",
       "widget_label" = EXCLUDED."widget_label",
+      "hide_label_on_mobile" = EXCLUDED."hide_label_on_mobile",
       "reply_time_text" = EXCLUDED."reply_time_text",
       "retention_months" = EXCLUDED."retention_months",
       "provision_state" = EXCLUDED."provision_state",

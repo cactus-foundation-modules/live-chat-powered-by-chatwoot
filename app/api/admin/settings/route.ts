@@ -28,6 +28,7 @@ export async function GET() {
     hasBackupToken: !!config.backupToken,
     widgetPosition: config.widgetPosition,
     widgetLabel: config.widgetLabel,
+    hideLabelOnMobile: config.hideLabelOnMobile,
     replyTimeText: config.replyTimeText,
     retentionMonths: config.retentionMonths,
     hasOwnAgentToken: !!ownToken,
@@ -52,6 +53,7 @@ const Body = z.object({
   backupToken: z.string().min(8).optional(),
   widgetPosition: z.enum(['left', 'right']).optional(),
   widgetLabel: z.string().max(60).optional(),
+  hideLabelOnMobile: z.boolean().optional(),
   replyTimeText: z.string().max(120).optional(),
   retentionMonths: z.number().int().min(1).max(120).optional(),
 })
