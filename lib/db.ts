@@ -201,3 +201,51 @@ export async function setAgentToken(userId: string, encrypted: string | null, ag
       "updated_at" = now()
   `
 }
+
+// ---------------------------------------------------------------------------
+// Conversation listing for anything that merges channels
+//
+// The admin inbox asks for one status at a time, which is right for a screen
+// with an Open and a Resolved tab and wrong for a merged list: there, a
+// conversation is a conversation whatever became of it. These two read the same
+// mirror, newest first, without the status split.
+// ---------------------------------------------------------------------------
+
+/** Conversations by last message, optionally only those since a date. `before`
+ *  pages backwards - a timestamp cursor, so a chat arriving mid-listing cannot
+ *  make a page repeat. */
+export async function listConversationSummaries(opts: {
+  since?: Date
+  before?: Date
+  limit: number
+}): Promise<MirrorConversation[]> {
+  const limit = Math.max(1, Math.min(200, opts.limit))
+  const rows = await prisma.$queryRaw<Record<string, unknown>[]>`
+    SELECT * FROM "lc_conversations"
+     WHERE (${opts.since ?? null}::timestamptz IS NULL
+            OR COALESCE("last_message_at", "created_at") > ${opts.since ?? null}::timestamptz)
+       AND (${opts.before ?? null}::timestamptz IS NULL
+            OR COALESCE("last_message_at", "created_at") < ${opts.before ?? null}::timestamptz)
+     ORDER BY COALESCE("last_message_at", "created_at") DESC, "id" DESC
+     LIMIT ${limit}
+  `
+  return rows.map(mapConversation)
+}
+
+/** Every conversation from any of these addresses. The single-address form
+ *  above is what the contact-form panel uses; this is for a caller holding
+ *  somebody's whole set of addresses at once. */
+export async function listConversationsByEmails(
+  emails: string[],
+  limit = 50,
+): Promise<MirrorConversation[]> {
+  const cleaned = [...new Set(emails.map((e) => e.trim().toLowerCase()).filter(Boolean))]
+  if (cleaned.length === 0) return []
+  const rows = await prisma.$queryRaw<Record<string, unknown>[]>`
+    SELECT * FROM "lc_conversations"
+     WHERE lower("contact_email") = ANY(${cleaned}::text[])
+     ORDER BY "last_message_at" DESC NULLS LAST
+     LIMIT ${Math.max(1, Math.min(200, limit))}
+  `
+  return rows.map(mapConversation)
+}
