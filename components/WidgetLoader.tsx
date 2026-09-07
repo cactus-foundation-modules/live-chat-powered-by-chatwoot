@@ -25,6 +25,7 @@ type BootInfo = {
   enabled: boolean
   label: string
   hideLabelOnMobile?: boolean
+  hideBubbleOnMobile?: boolean
   replyTime: string
   position: 'left' | 'right'
   turnstileSiteKey: string | null
@@ -393,6 +394,7 @@ export function WidgetLoader({ apiBase }: { apiBase: string }) {
         <div
           role="dialog"
           aria-label="Live chat needs a cookie"
+          className="lc-bubble-host"
           style={{
             position: 'fixed', bottom: 'calc(4.75rem + var(--cactus-bottom-bar-offset, 0px))', ...side, zIndex: 2147482000,
             width: 'min(20rem, calc(100vw - 2.5rem))',
@@ -437,6 +439,15 @@ export function WidgetLoader({ apiBase }: { apiBase: string }) {
           </button>
         </div>
       )}
+      {!panelOpen && info.hideBubbleOnMobile && (
+        // No bubble at all on phones, by the owner's choice: for a site whose
+        // phone bar carries a chat cell of its own, this pill is a second door
+        // to the same room, sitting over the page on the smallest screen there
+        // is. Hidden rather than not rendered, so the loader keeps running -
+        // it is what the bar's cell asks to open the chat, and it still has to
+        // be listening. Desktop is untouched.
+        <style dangerouslySetInnerHTML={{ __html: `@media (max-width: 640px){.lc-bubble-host{display:none !important}}` }} />
+      )}
       {!panelOpen && info.hideLabelOnMobile && (
         // Icon-only on phones, by the owner's choice: the pill's copy is what
         // overlaps sticky basket bars and filter rows on a narrow screen, and
@@ -454,7 +465,7 @@ export function WidgetLoader({ apiBase }: { apiBase: string }) {
               : state === 'error' ? () => window.location.reload() : openChat
           }
           disabled={state === 'starting'}
-          className={info.hideLabelOnMobile ? 'lc-bubble' : undefined}
+          className={['lc-bubble-host', info.hideLabelOnMobile ? 'lc-bubble' : ''].filter(Boolean).join(' ')}
           aria-label={bubbleLabel}
           aria-expanded={!allowed ? noticeOpen : undefined}
           title={!allowed ? 'Live chat needs the live chat cookie' : bubbleTitle}

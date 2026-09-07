@@ -19,6 +19,7 @@ type Settings = {
   widgetPosition: 'left' | 'right'
   widgetLabel: string
   hideLabelOnMobile: boolean
+  hideBubbleOnMobile: boolean
   replyTimeText: string
   retentionMonths: number
   hasOwnAgentToken: boolean
@@ -44,7 +45,7 @@ export function LiveChatSettingsTab() {
   const [err, setErr] = useState('')
   const [busy, setBusy] = useState(false)
   const [agentToken, setAgentToken] = useState('')
-  const [widget, setWidget] = useState({ widgetPosition: 'right' as 'left' | 'right', widgetLabel: '', hideLabelOnMobile: false, replyTimeText: '', retentionMonths: 12 })
+  const [widget, setWidget] = useState({ widgetPosition: 'right' as 'left' | 'right', widgetLabel: '', hideLabelOnMobile: false, hideBubbleOnMobile: false, replyTimeText: '', retentionMonths: 12 })
   const [prov, setProv] = useState({ flyToken: '', dbUrl: '', appName: '', image: '', running: false, step: '' })
   const [revealed, setRevealed] = useState<{ email: string; password: string | null } | null>(null)
 
@@ -54,7 +55,7 @@ export function LiveChatSettingsTab() {
       if (!res.ok) return
       const s = await res.json() as Settings
       setSettings(s)
-      setWidget({ widgetPosition: s.widgetPosition, widgetLabel: s.widgetLabel, hideLabelOnMobile: s.hideLabelOnMobile, replyTimeText: s.replyTimeText, retentionMonths: s.retentionMonths })
+      setWidget({ widgetPosition: s.widgetPosition, widgetLabel: s.widgetLabel, hideLabelOnMobile: s.hideLabelOnMobile, hideBubbleOnMobile: s.hideBubbleOnMobile, replyTimeText: s.replyTimeText, retentionMonths: s.retentionMonths })
     } catch { /* retry on next open */ }
   }, [])
 
@@ -335,6 +336,14 @@ export function LiveChatSettingsTab() {
             <span>Hide the label on phones</span>
           </label>
           <span className="field-hint">Leaves just the round chat icon on small screens, so the bubble stops sitting on top of buttons. Desktop keeps the words.</span>
+        </div>
+        <div className="field">
+          <label style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', cursor: 'pointer' }}>
+            <input type="checkbox" checked={widget.hideBubbleOnMobile}
+              onChange={(e) => setWidget({ ...widget, hideBubbleOnMobile: e.target.checked })} />
+            <span>Hide the bubble on phones</span>
+          </label>
+          <span className="field-hint">For a site whose phone bar already carries a chat button - the bubble would be a second way to the same place, sitting over the page. Desktop keeps its bubble. Leave this off unless something else on the phone opens the chat, or there will be no way in at all.</span>
         </div>
         <div className="field"><label>Reply-time expectation (shown on the bubble tooltip)</label>
           <input value={widget.replyTimeText} onChange={(e) => setWidget({ ...widget, replyTimeText: e.target.value })} /></div>

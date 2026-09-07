@@ -27,6 +27,7 @@ export type LiveChatConfig = {
   widgetPosition: 'left' | 'right'
   widgetLabel: string
   hideLabelOnMobile: boolean
+  hideBubbleOnMobile: boolean
   replyTimeText: string
   retentionMonths: number
   chatLoginEmail: string | null
@@ -72,6 +73,7 @@ export async function getLiveChatConfig(): Promise<LiveChatConfig> {
     widgetPosition: str(row?.widget_position) === 'left' ? 'left' : 'right',
     widgetLabel: str(row?.widget_label) ?? 'Chat with us',
     hideLabelOnMobile: row?.hide_label_on_mobile === true,
+    hideBubbleOnMobile: row?.hide_bubble_on_mobile === true,
     replyTimeText: str(row?.reply_time_text) ?? 'We usually reply within a few hours',
     retentionMonths: num(row?.retention_months) ?? 12,
     chatLoginEmail: env.LIVECHAT_LOGIN_EMAIL ?? str(row?.chat_login_email),
@@ -105,6 +107,7 @@ export type UpdatableSettings = Partial<{
   widgetPosition: 'left' | 'right'
   widgetLabel: string
   hideLabelOnMobile: boolean
+  hideBubbleOnMobile: boolean
   replyTimeText: string
   retentionMonths: number
   provisionState: unknown
@@ -134,6 +137,7 @@ export async function updateSettings(data: UpdatableSettings): Promise<void> {
     widget_position: keep<string>(data.widgetPosition, row?.widget_position, 'right'),
     widget_label: keep<string>(data.widgetLabel, row?.widget_label, 'Chat with us'),
     hide_label_on_mobile: keep<boolean>(data.hideLabelOnMobile, row?.hide_label_on_mobile, false),
+    hide_bubble_on_mobile: keep<boolean>(data.hideBubbleOnMobile, row?.hide_bubble_on_mobile, false),
     reply_time_text: keep<string>(data.replyTimeText, row?.reply_time_text, 'We usually reply within a few hours'),
     retention_months: keep<number>(data.retentionMonths, row?.retention_months, 12),
     provision_state: data.provisionState !== undefined

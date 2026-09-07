@@ -97,6 +97,7 @@ export async function GET() {
     enabled,
     label: config.widgetLabel,
     hideLabelOnMobile: config.hideLabelOnMobile,
+    hideBubbleOnMobile: config.hideBubbleOnMobile,
     replyTime: config.replyTimeText,
     position: config.widgetPosition,
     turnstileSiteKey: process.env.TURNSTILE_SECRET_KEY ? (process.env.TURNSTILE_SITE_KEY ?? null) : null,

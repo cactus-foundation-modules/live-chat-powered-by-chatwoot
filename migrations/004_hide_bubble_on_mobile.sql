@@ -1,0 +1,12 @@
+-- A site whose phone header carries core's Mobile Bar already has a way into
+-- the chat - a cell in the bar - so the floating bubble is a second launcher
+-- for the same thing, sitting over the content on the smallest screen there is.
+-- This switch drops the bubble entirely below the mobile breakpoint, leaving
+-- the desktop one alone.
+--
+-- Separate from hide_label_on_mobile (003) rather than a third state of it: one
+-- says "show less of the bubble", this says "there is another way in". A site
+-- can sensibly want the trimmed pill on phones and no bar at all.
+--
+-- Off by default, so nothing changes on any existing site until it is asked for.
+ALTER TABLE "lc_settings" ADD COLUMN IF NOT EXISTS "hide_bubble_on_mobile" BOOLEAN NOT NULL DEFAULT false;
