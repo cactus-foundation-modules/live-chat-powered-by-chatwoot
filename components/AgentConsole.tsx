@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
+import { LIVE_CHAT_OPEN_EVENT } from '@/modules/live-chat/lib/open-event'
 import { InboxCore, useLiveChatRealtime } from './InboxCore'
 
 // The frontend answering surface: admins browsing the public site get this
@@ -10,7 +11,7 @@ import { InboxCore, useLiveChatRealtime } from './InboxCore'
 // The realtime socket lives HERE, not inside the inbox, so a closed console
 // still hears new messages instantly: the badge updates at once and the
 // button pulses until it's opened.
-export function AgentConsole({ apiBase, position }: { apiBase: string; position: 'left' | 'right' }) {
+export function AgentConsole({ apiBase, position, hideOnMobile }: { apiBase: string; position: 'left' | 'right'; hideOnMobile?: boolean }) {
   const [open, setOpen] = useState(false)
   const [unread, setUnread] = useState(0)
 
@@ -44,14 +45,37 @@ export function AgentConsole({ apiBase, position }: { apiBase: string; position:
     setTimeout(poll, 8000)
   }, [poll]))
 
+  // The same door the customer widget answers: core's Mobile Bar chat cell (and
+  // any other chat control on the page) fires this event, and until now only
+  // the visitor-facing loader listened - so for a member of staff the bar's
+  // chat button did nothing at all. Staff get the console it opens instead of
+  // the customer widget, which is the point: they answer chats, they don't
+  // start one with themselves.
+  useEffect(() => {
+    const onOpenRequest = () => setOpen(true)
+    window.addEventListener(LIVE_CHAT_OPEN_EVENT, onOpenRequest)
+    return () => window.removeEventListener(LIVE_CHAT_OPEN_EVENT, onOpenRequest)
+  }, [])
+
   const side = position === 'left' ? { left: '1.25rem' } : { right: '1.25rem' }
 
   return (
     <>
       <style>{`@keyframes lcPulse { 0%,100% { box-shadow: 0 4px 14px rgba(0,0,0,0.25); } 50% { box-shadow: 0 0 0 10px rgba(220,60,60,0.28), 0 4px 14px rgba(0,0,0,0.25); } }`}</style>
+      {hideOnMobile && !open && (
+        // "Hide the bubble on phones" covers staff too. It hid the customer
+        // pill only, so on a site whose phone bar carries a chat cell an admin
+        // still got a second, larger door to the same room sat on top of the
+        // page - the very thing the setting exists to stop. Hidden rather than
+        // unmounted: the console keeps polling and listening, so the badge is
+        // right the moment it is opened from the bar. !important because the
+        // button's own placement is an inline style, which otherwise outranks
+        // anything a stylesheet has to say. Desktop is untouched.
+        <style>{`@media (max-width: 640px){.lc-agent-host{display:none !important}}`}</style>
+      )}
       {open && (
         <div style={{
-          position: 'fixed', bottom: '5rem', ...side, zIndex: 2147482001,
+          position: 'fixed', bottom: 'calc(5rem + var(--cactus-bottom-bar-offset, 0px))', ...side, zIndex: 2147482001,
           width: 'min(400px, calc(100vw - 2rem))', height: 'min(560px, calc(100vh - 8rem))',
           borderRadius: '0.75rem', overflow: 'hidden', boxShadow: '0 8px 30px rgba(0,0,0,0.35)',
         }}>
@@ -62,8 +86,11 @@ export function AgentConsole({ apiBase, position }: { apiBase: string; position:
         type="button"
         onClick={() => setOpen((o) => !o)}
         aria-label={unread > 0 ? `Live chat agent console - ${unread} unread` : 'Live chat agent console'}
+        className="lc-agent-host"
         style={{
-          position: 'fixed', bottom: '1.25rem', ...side, zIndex: 2147482001,
+          // Clears core's Mobile Bar by the height the bar publishes; 0 on a
+          // site without one, so desktop and bar-less phones are unchanged.
+          position: 'fixed', bottom: 'calc(1.25rem + var(--cactus-bottom-bar-offset, 0px))', ...side, zIndex: 2147482001,
           display: 'flex', alignItems: 'center', gap: '0.5rem',
           padding: '0.75rem 1.1rem', borderRadius: '999px', border: 'none',
           background: unread > 0 && !open ? 'var(--color-danger, #c0392b)' : 'var(--color-accent, #1A5F5A)',

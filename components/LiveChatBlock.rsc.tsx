@@ -17,7 +17,7 @@ async function LiveChatRsc() {
   if (user && await hasPermission(user, 'livechat.view').catch(() => false)) {
     // Staff browsing the shop answer chats from here instead of chatting with
     // themselves through the customer widget.
-    return <AgentConsole apiBase={API_BASE} position={config.widgetPosition} />
+    return <AgentConsole apiBase={API_BASE} position={config.widgetPosition} hideOnMobile={config.hideBubbleOnMobile} />
   }
   return <WidgetLoader apiBase={API_BASE} />
 }

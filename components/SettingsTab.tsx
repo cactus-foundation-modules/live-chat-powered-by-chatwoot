@@ -343,7 +343,7 @@ export function LiveChatSettingsTab() {
               onChange={(e) => setWidget({ ...widget, hideBubbleOnMobile: e.target.checked })} />
             <span>Hide the bubble on phones</span>
           </label>
-          <span className="field-hint">For a site whose phone bar already carries a chat button - the bubble would be a second way to the same place, sitting over the page. Desktop keeps its bubble. Leave this off unless something else on the phone opens the chat, or there will be no way in at all.</span>
+          <span className="field-hint">For a site whose phone bar already carries a chat button - the bubble would be a second way to the same place, sitting over the page. Applies to your own staff too: their answering console hides on phones as well, and the chat button on the phone bar opens it instead. Desktop keeps its bubble. Leave this off unless something else on the phone opens the chat, or there will be no way in at all.</span>
         </div>
         <div className="field"><label>Reply-time expectation (shown on the bubble tooltip)</label>
           <input value={widget.replyTimeText} onChange={(e) => setWidget({ ...widget, replyTimeText: e.target.value })} /></div>
