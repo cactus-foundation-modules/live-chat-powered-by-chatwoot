@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
+import { LIVE_CHAT_OPEN_EVENT } from '@/modules/live-chat/lib/open-event'
 import { CONSENT_CHANGE_EVENT, chatConsentGranted, consentAnswered, openConsentSettings } from '../lib/consent'
 
 // Customer-facing side of the LiveChatWidget block.
@@ -364,6 +365,17 @@ export function WidgetLoader({ apiBase }: { apiBase: string }) {
     }
   }, [info, allowed, state, openChat])
 
+  // Anything else on the page may ask for the chat: core's Mobile Bar carries a
+  // chat cell, and this module's cell there is one line - it fires this event.
+  // Routed through the loader rather than reaching for $chatwoot directly so
+  // that a first press still goes through boot, consent and Turnstile in the
+  // one place that knows about them.
+  useEffect(() => {
+    const onOpenRequest = () => { void openChat() }
+    window.addEventListener(LIVE_CHAT_OPEN_EVENT, onOpenRequest)
+    return () => window.removeEventListener(LIVE_CHAT_OPEN_EVENT, onOpenRequest)
+  }, [openChat])
+
   // The block itself is still off, or chat is switched off site-wide: nothing to
   // draw. Consent is handled below - the bubble stays, the chat does not start.
   if (!info) return null
@@ -382,7 +394,7 @@ export function WidgetLoader({ apiBase }: { apiBase: string }) {
           role="dialog"
           aria-label="Live chat needs a cookie"
           style={{
-            position: 'fixed', bottom: '4.75rem', ...side, zIndex: 2147482000,
+            position: 'fixed', bottom: 'calc(4.75rem + var(--cactus-bottom-bar-offset, 0px))', ...side, zIndex: 2147482000,
             width: 'min(20rem, calc(100vw - 2.5rem))',
             background: 'var(--color-surface, #fff)',
             color: 'var(--color-text, #1c1a17)',
@@ -447,7 +459,11 @@ export function WidgetLoader({ apiBase }: { apiBase: string }) {
           aria-expanded={!allowed ? noticeOpen : undefined}
           title={!allowed ? 'Live chat needs the live chat cookie' : bubbleTitle}
           style={{
-            position: 'fixed', bottom: '1.25rem', ...side, zIndex: 2147482000,
+            // Core's Mobile Bar publishes its own height as
+            // --cactus-bottom-bar-offset at the breakpoints it is shown at, and
+            // 0 everywhere else, so the bubble sits above a phone bar without
+            // this module having to know whether the site has one.
+            position: 'fixed', bottom: 'calc(1.25rem + var(--cactus-bottom-bar-offset, 0px))', ...side, zIndex: 2147482000,
             display: 'flex', alignItems: 'center', gap: '0.5rem',
             padding: '0.75rem 1.1rem', borderRadius: '999px', border: 'none',
             background: 'var(--color-accent, #1A5F5A)', color: '#fff',

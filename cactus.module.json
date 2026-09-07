@@ -1,9 +1,9 @@
 {
   "name": "live-chat",
-  "version": "0.1.21",
+  "version": "0.1.22",
   "tablePrefix": "lc_",
   "description": "Live Chat Powered By Chatwoot - self-hosted live chat with attachments, canned replies and a full inbox in Cactus admin, answered from the site, the admin, or the Chatwoot mobile app.",
-  "requiresCoreVersion": "0.5.1383",
+  "requiresCoreVersion": "0.5.1548",
   "permissions": [
     "livechat.view",
     "livechat.reply",
@@ -50,6 +50,13 @@
       "permission": "livechat.manage",
       "import": "./components/BackupCard",
       "component": "LiveChatBackupCard"
+    },
+    {
+      "point": "core.mobile-bar-items",
+      "id": "live-chat-open",
+      "label": "Live chat: message us",
+      "import": "./components/ChatMobileBarItem",
+      "component": "ChatMobileBarItem"
     }
   ],
   "puckBlocks": [
