@@ -161,11 +161,14 @@ export async function totalUnread(): Promise<number> {
   return Number(rows[0]?.total ?? 0)
 }
 
+// ::int4 is load-bearing. Prisma sends a JS integer as bigint, and there is no
+// make_interval(months => bigint) - Postgres answers 42883 and the retention cron
+// returns a 500. Every named make_interval argument except `secs` is int4.
 export async function deleteConversationsOlderThan(months: number): Promise<number> {
   const result = await prisma.$executeRaw`
     DELETE FROM "lc_conversations"
     WHERE "status" = 'resolved'
-      AND COALESCE("last_message_at", "updated_at") < now() - make_interval(months => ${months})
+      AND COALESCE("last_message_at", "updated_at") < now() - make_interval(months => ${months}::int4)
   `
   return result
 }

@@ -40,6 +40,14 @@ export async function GET(request: NextRequest) {
     // sweep below still runs; the server side catches up on the next night.
   }
 
-  const mirrorDeleted = await deleteConversationsOlderThan(months)
-  return NextResponse.json({ ok: true, chatwootDeleted, mirrorDeleted, months })
+  // Caught and reported rather than thrown. An uncaught error here is masked by the
+  // framework into a bare "Internal Server Error", so core's cron dispatcher records
+  // "HTTP 500" and the owner is told a job failed with no hint as to why.
+  try {
+    const mirrorDeleted = await deleteConversationsOlderThan(months)
+    return NextResponse.json({ ok: true, chatwootDeleted, mirrorDeleted, months })
+  } catch (err) {
+    const error = err instanceof Error ? err.message : 'the retention sweep failed'
+    return NextResponse.json({ ok: false, chatwootDeleted, error }, { status: 500 })
+  }
 }
