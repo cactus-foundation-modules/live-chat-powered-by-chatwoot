@@ -272,6 +272,12 @@ export async function POST(request: NextRequest) {
           // idle auto-offline would keep flipping it back on its own.
           `account.update!(auto_offline: false) if account.respond_to?(:auto_offline)`,
           `InboxMember.find_by(inbox: inbox, user: owner) || InboxMember.create!(inbox: inbox, user: owner)`,
+          // Chatwoot seeds a Mon-Fri 9-5 business-hours row set on every new
+          // inbox and its widget reads those rows before it reads anyone's
+          // availability - printing "typically replies in a few minutes" to a
+          // visitor who arrives while the switch says Offline. Business hours
+          // stay off here; the rows are marked closed so that line cannot fire.
+          `inbox.working_hours.update_all(closed_all_day: true, open_all_day: false, open_hour: nil, open_minutes: nil, close_hour: nil, close_minutes: nil)`,
           `wh = '${siteUrl.replace(/\/$/, '')}/api/m/live-chat/webhook?token=${state.webhookToken}'`,
           `account.webhooks.create!(url: wh, subscriptions: %w[conversation_created conversation_status_changed conversation_updated message_created message_updated]) unless account.webhooks.exists?(url: wh)`,
           `puts '===R===' + JSON.generate({account_id: account.id, inbox_id: inbox.id, website_token: channel.website_token, hmac_token: channel.hmac_token, api_token: owner.access_token&.token})`,
@@ -302,6 +308,7 @@ export async function POST(request: NextRequest) {
           backupToken: state.backupToken,
           chatLoginEmail: state.adminEmail,
           chatLoginPassword: state.chatPassword,
+          workingHoursClosed: true,
         })
         state.step = 'done'
         break

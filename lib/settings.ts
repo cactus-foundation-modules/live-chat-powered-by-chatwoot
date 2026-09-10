@@ -12,6 +12,11 @@ import { decryptSecret, encryptSecret } from '@/lib/crypto/secrets'
 // be shadowed by a stale row.
 // ---------------------------------------------------------------------------
 
+// The away card's wording, and the bubble's tooltip while nobody is on. Kept
+// here as well as in the migration's DEFAULT so a row written before 005 landed
+// still reads as a sentence rather than an empty string.
+export const DEFAULT_AWAY_MESSAGE = 'We are away at the moment - leave a message here and we will email you back.'
+
 export type LiveChatConfig = {
   serverUrl: string | null
   accountId: number | null
@@ -29,6 +34,8 @@ export type LiveChatConfig = {
   hideLabelOnMobile: boolean
   hideBubbleOnMobile: boolean
   replyTimeText: string
+  awayMessage: string
+  workingHoursClosed: boolean
   retentionMonths: number
   chatLoginEmail: string | null
   chatLoginPassword: string | null
@@ -75,6 +82,8 @@ export async function getLiveChatConfig(): Promise<LiveChatConfig> {
     hideLabelOnMobile: row?.hide_label_on_mobile === true,
     hideBubbleOnMobile: row?.hide_bubble_on_mobile === true,
     replyTimeText: str(row?.reply_time_text) ?? 'We usually reply within a few hours',
+    awayMessage: str(row?.away_message) ?? DEFAULT_AWAY_MESSAGE,
+    workingHoursClosed: row?.working_hours_closed === true,
     retentionMonths: num(row?.retention_months) ?? 12,
     chatLoginEmail: env.LIVECHAT_LOGIN_EMAIL ?? str(row?.chat_login_email),
     chatLoginPassword: dec(row?.chat_login_password_encrypted),
@@ -109,6 +118,8 @@ export type UpdatableSettings = Partial<{
   hideLabelOnMobile: boolean
   hideBubbleOnMobile: boolean
   replyTimeText: string
+  awayMessage: string
+  workingHoursClosed: boolean
   retentionMonths: number
   provisionState: unknown
   chatLoginEmail: string
@@ -139,6 +150,8 @@ export async function updateSettings(data: UpdatableSettings): Promise<void> {
     hide_label_on_mobile: keep<boolean>(data.hideLabelOnMobile, row?.hide_label_on_mobile, false),
     hide_bubble_on_mobile: keep<boolean>(data.hideBubbleOnMobile, row?.hide_bubble_on_mobile, false),
     reply_time_text: keep<string>(data.replyTimeText, row?.reply_time_text, 'We usually reply within a few hours'),
+    away_message: keep<string>(data.awayMessage, row?.away_message, DEFAULT_AWAY_MESSAGE),
+    working_hours_closed: keep<boolean>(data.workingHoursClosed, row?.working_hours_closed, false),
     retention_months: keep<number>(data.retentionMonths, row?.retention_months, 12),
     provision_state: data.provisionState !== undefined
       ? JSON.stringify(data.provisionState)
@@ -152,13 +165,15 @@ export async function updateSettings(data: UpdatableSettings): Promise<void> {
       "id", "server_url", "account_id", "inbox_id", "website_token",
       "hmac_token_encrypted", "api_token_encrypted", "webhook_token",
       "fly_app", "fly_token_encrypted", "backup_endpoint", "backup_token_encrypted",
-      "widget_position", "widget_label", "hide_label_on_mobile", "reply_time_text", "retention_months",
+      "widget_position", "widget_label", "hide_label_on_mobile", "hide_bubble_on_mobile",
+      "reply_time_text", "away_message", "working_hours_closed", "retention_months",
       "provision_state", "chat_login_email", "chat_login_password_encrypted", "updated_at"
     ) VALUES (
       'singleton', ${values.server_url}, ${values.account_id}, ${values.inbox_id}, ${values.website_token},
       ${values.hmac_token_encrypted}, ${values.api_token_encrypted}, ${values.webhook_token},
       ${values.fly_app}, ${values.fly_token_encrypted}, ${values.backup_endpoint}, ${values.backup_token_encrypted},
-      ${values.widget_position}, ${values.widget_label}, ${values.hide_label_on_mobile}, ${values.reply_time_text}, ${values.retention_months},
+      ${values.widget_position}, ${values.widget_label}, ${values.hide_label_on_mobile}, ${values.hide_bubble_on_mobile},
+      ${values.reply_time_text}, ${values.away_message}, ${values.working_hours_closed}, ${values.retention_months},
       ${values.provision_state}::jsonb, ${values.chat_login_email}, ${values.chat_login_password_encrypted}, now()
     )
     ON CONFLICT ("id") DO UPDATE SET
@@ -176,7 +191,10 @@ export async function updateSettings(data: UpdatableSettings): Promise<void> {
       "widget_position" = EXCLUDED."widget_position",
       "widget_label" = EXCLUDED."widget_label",
       "hide_label_on_mobile" = EXCLUDED."hide_label_on_mobile",
+      "hide_bubble_on_mobile" = EXCLUDED."hide_bubble_on_mobile",
       "reply_time_text" = EXCLUDED."reply_time_text",
+      "away_message" = EXCLUDED."away_message",
+      "working_hours_closed" = EXCLUDED."working_hours_closed",
       "retention_months" = EXCLUDED."retention_months",
       "provision_state" = EXCLUDED."provision_state",
       "chat_login_email" = EXCLUDED."chat_login_email",

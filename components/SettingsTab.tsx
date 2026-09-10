@@ -21,6 +21,7 @@ type Settings = {
   hideLabelOnMobile: boolean
   hideBubbleOnMobile: boolean
   replyTimeText: string
+  awayMessage: string
   retentionMonths: number
   hasOwnAgentToken: boolean
   envProvided: string[]
@@ -45,7 +46,7 @@ export function LiveChatSettingsTab() {
   const [err, setErr] = useState('')
   const [busy, setBusy] = useState(false)
   const [agentToken, setAgentToken] = useState('')
-  const [widget, setWidget] = useState({ widgetPosition: 'right' as 'left' | 'right', widgetLabel: '', hideLabelOnMobile: false, hideBubbleOnMobile: false, replyTimeText: '', retentionMonths: 12 })
+  const [widget, setWidget] = useState({ widgetPosition: 'right' as 'left' | 'right', widgetLabel: '', hideLabelOnMobile: false, hideBubbleOnMobile: false, replyTimeText: '', awayMessage: '', retentionMonths: 12 })
   const [prov, setProv] = useState({ flyToken: '', dbUrl: '', appName: '', image: '', running: false, step: '' })
   const [revealed, setRevealed] = useState<{ email: string; password: string | null } | null>(null)
 
@@ -55,7 +56,7 @@ export function LiveChatSettingsTab() {
       if (!res.ok) return
       const s = await res.json() as Settings
       setSettings(s)
-      setWidget({ widgetPosition: s.widgetPosition, widgetLabel: s.widgetLabel, hideLabelOnMobile: s.hideLabelOnMobile, hideBubbleOnMobile: s.hideBubbleOnMobile, replyTimeText: s.replyTimeText, retentionMonths: s.retentionMonths })
+      setWidget({ widgetPosition: s.widgetPosition, widgetLabel: s.widgetLabel, hideLabelOnMobile: s.hideLabelOnMobile, hideBubbleOnMobile: s.hideBubbleOnMobile, replyTimeText: s.replyTimeText, awayMessage: s.awayMessage, retentionMonths: s.retentionMonths })
     } catch { /* retry on next open */ }
   }, [])
 
@@ -347,6 +348,9 @@ export function LiveChatSettingsTab() {
         </div>
         <div className="field"><label>Reply-time expectation (shown on the bubble tooltip)</label>
           <input value={widget.replyTimeText} onChange={(e) => setWidget({ ...widget, replyTimeText: e.target.value })} /></div>
+        <div className="field"><label>What to say when you are away</label>
+          <input value={widget.awayMessage} onChange={(e) => setWidget({ ...widget, awayMessage: e.target.value })} />
+          <span className="field-hint">Shown at the top of the chat panel, and on the bubble, whenever the Online/Offline switch on the inbox says you are away. Say what happens to a message left out of hours - people will wait for a reply that never comes if you do not.</span></div>
         <div className="field"><label>Corner</label>
           <select value={widget.widgetPosition} onChange={(e) => setWidget({ ...widget, widgetPosition: e.target.value as 'left' | 'right' })}>
             <option value="right">Bottom right</option>

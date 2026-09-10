@@ -99,6 +99,7 @@ export async function GET() {
     hideLabelOnMobile: config.hideLabelOnMobile,
     hideBubbleOnMobile: config.hideBubbleOnMobile,
     replyTime: config.replyTimeText,
+    awayMessage: config.awayMessage,
     position: config.widgetPosition,
     turnstileSiteKey: process.env.TURNSTILE_SECRET_KEY ? (process.env.TURNSTILE_SITE_KEY ?? null) : null,
     consentGate,

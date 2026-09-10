@@ -4,8 +4,8 @@ import { getSessionFromCookie } from '@/lib/auth/session'
 import { hasPermission } from '@/lib/permissions/check'
 import { errorResponse } from '@/lib/utils'
 import { getAgentToken } from '@/modules/live-chat/lib/db'
-import { getLiveChatConfig, type LiveChatConfig } from '@/modules/live-chat/lib/settings'
-import { getAvailability, setAvailability } from '@/modules/live-chat/lib/chatwoot'
+import { getLiveChatConfig, updateSettings, type LiveChatConfig } from '@/modules/live-chat/lib/settings'
+import { closeInboxWorkingHours, getAvailability, setAvailability } from '@/modules/live-chat/lib/chatwoot'
 
 // The Online/Offline switch shown on the admin inbox and the frontend agent
 // console. Availability drives what customers see on the widget (online vs
@@ -35,9 +35,26 @@ async function resolveToken(): Promise<ResolvedToken> {
   return { token, config }
 }
 
+// One-off repair for installs provisioned before the away copy was fixed:
+// Chatwoot's seeded 9-5 business-hours rows make its widget print the reply
+// time to a visitor who arrives while the switch says Offline. Marking every
+// day closed stops that (see closeInboxWorkingHours). Done from here because
+// this is the admin-only call the inbox page makes on open - rare, signed in,
+// and never on the customer's path - and recorded in settings so it happens
+// once rather than on every visit. A failure is not worth a refusal: the page
+// still wants its answer, and the next open tries again.
+async function closeWorkingHoursOnce(config: LiveChatConfig, token: string): Promise<void> {
+  if (config.workingHoursClosed || !config.inboxId) return
+  try {
+    await closeInboxWorkingHours(config.inboxId, token)
+    await updateSettings({ workingHoursClosed: true })
+  } catch { /* try again on the next open */ }
+}
+
 export async function GET() {
   const r = await resolveToken()
   if (r.error) return r.error
+  await closeWorkingHoursOnce(r.config, r.config.apiToken ?? r.token)
   const availability = await getAvailability(r.token, r.config.serverUrl!, r.config.accountId!)
   return NextResponse.json({ availability })
 }

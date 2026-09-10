@@ -31,6 +31,7 @@ export async function GET() {
     hideLabelOnMobile: config.hideLabelOnMobile,
     hideBubbleOnMobile: config.hideBubbleOnMobile,
     replyTimeText: config.replyTimeText,
+    awayMessage: config.awayMessage,
     retentionMonths: config.retentionMonths,
     hasOwnAgentToken: !!ownToken,
     envProvided: envProvidedKeys(),
@@ -57,6 +58,7 @@ const Body = z.object({
   hideLabelOnMobile: z.boolean().optional(),
   hideBubbleOnMobile: z.boolean().optional(),
   replyTimeText: z.string().max(120).optional(),
+  awayMessage: z.string().min(1).max(200).optional(),
   retentionMonths: z.number().int().min(1).max(120).optional(),
 })
 

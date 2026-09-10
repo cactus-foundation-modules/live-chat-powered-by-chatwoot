@@ -27,6 +27,7 @@ type BootInfo = {
   hideLabelOnMobile?: boolean
   hideBubbleOnMobile?: boolean
   replyTime: string
+  awayMessage: string
   position: 'left' | 'right'
   turnstileSiteKey: string | null
   consentGate?: 'allowed' | 'category'
@@ -125,6 +126,11 @@ function readJourney(): string {
 // no reload - and the widget's router lands straight on the composer.
 // Verified against a fresh visitor: #/messages renders the conversation view
 // directly with no bounce back to home.
+//
+// Only ever called while somebody is on. The home screen is where the widget
+// says whether anyone is there, so skipping it while away dropped the visitor
+// into a blank composer with nothing to tell them the office was shut - which
+// is exactly when that screen earns its keep.
 function jumpToMessages() {
   const frame = document.querySelector('.woot-widget-holder iframe') as HTMLIFrameElement | null
   if (frame?.src) frame.src = frame.src.split('#')[0] + '#/messages'
@@ -204,7 +210,7 @@ export function WidgetLoader({ apiBase }: { apiBase: string }) {
   const openChat = useCallback(async () => {
     if (startedRef.current) {
       chatwoot()?.toggle('open')
-      jumpToMessages()
+      if (info?.online !== false) jumpToMessages()
       setPanelOpen(true)
       rememberPanelState('open')
       return
@@ -236,6 +242,9 @@ export function WidgetLoader({ apiBase }: { apiBase: string }) {
         locale: 'en',
         type: 'standard',
         darkMode: siteIsDark ? 'auto' : 'light',
+        // The widget's own away card, in the site's words rather than
+        // Chatwoot's "We are away at the moment". Read once, at run().
+        unavailableMessage: info.awayMessage,
       }
 
       // The ready listener attaches BEFORE the SDK runs - with warm caches the
@@ -270,7 +279,7 @@ export function WidgetLoader({ apiBase }: { apiBase: string }) {
         setTimeout(push, 8000)
         window.addEventListener('chatwoot:on-message', push, { once: true })
         chatwoot()?.toggle('open')
-        jumpToMessages()
+        if (info.online !== false) jumpToMessages()
         setPanelOpen(true)
         rememberPanelState('open')
         setState('ready')
@@ -384,7 +393,7 @@ export function WidgetLoader({ apiBase }: { apiBase: string }) {
   const side = info.position === 'left' ? { left: '1.25rem' } : { right: '1.25rem' }
   const away = info.online === false
   const bubbleLabel = away ? 'Leave us a message' : info.label
-  const bubbleTitle = away ? 'We are away right now - leave a message and we will get back to you' : info.replyTime
+  const bubbleTitle = away ? info.awayMessage : info.replyTime
   const noticeOpen = !allowed && consentNotice
 
   return (

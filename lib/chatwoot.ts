@@ -156,6 +156,32 @@ export async function getAvailability(agentToken: string, serverUrl: string, acc
   return value === 'online' || value === 'offline' || value === 'busy' ? value : null
 }
 
+// --- Inbox business hours --------------------------------------------------
+
+// Chatwoot seeds every new inbox with a Mon-Fri 9am-5pm business-hours row set
+// and keeps those rows whether or not business hours are switched on. Its
+// widget reads them before it reads anybody's availability: inside those hours
+// it prints the inbox's reply time ("Typically replies in a few minutes")
+// however offline the team actually is, which is the one moment that line must
+// not appear. The rows cannot be deleted over the API - update_working_hours
+// only rewrites the seven it finds - so every day is marked closed instead.
+//
+// Harmless: this module never switches business hours on, and with them off
+// Chatwoot ignores the rows for everything except that widget line, which then
+// falls through to the honest "we will be back as soon as possible".
+export async function closeInboxWorkingHours(inboxId: number, token?: string | null): Promise<void> {
+  const days = Array.from({ length: 7 }, (_, day) => ({
+    day_of_week: day,
+    closed_all_day: true,
+    open_all_day: false,
+  }))
+  await chatwootApi(`/inboxes/${inboxId}`, {
+    method: 'PATCH',
+    token,
+    body: { working_hours_enabled: false, working_hours: days },
+  })
+}
+
 export async function setAvailability(agentToken: string, serverUrl: string, accountId: number, availability: 'online' | 'offline' | 'busy') {
   const res = await fetch(`${serverUrl.replace(/\/$/, '')}/api/v1/profile/availability`, {
     method: 'POST',
