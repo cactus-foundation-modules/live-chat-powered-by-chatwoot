@@ -319,7 +319,10 @@ export function LiveChatSettingsTab() {
           <button type="button" className="btn btn-primary btn-sm" disabled={busy || agentToken.length < 10} onClick={saveAgentToken}>Save</button>
           {settings.hasOwnAgentToken && (
             <button type="button" className="btn btn-sm" disabled={busy}
-              onClick={async () => { await fetch(`${API_BASE}/admin/agent-token`, { method: 'DELETE' }); load() }}>
+              onClick={async () => {
+                if (!confirm('Remove your saved Access Token?')) return
+                await fetch(`${API_BASE}/admin/agent-token`, { method: 'DELETE' }); load()
+              }}>
               Remove
             </button>
           )}
