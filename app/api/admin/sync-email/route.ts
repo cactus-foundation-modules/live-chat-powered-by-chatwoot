@@ -49,6 +49,6 @@ export async function POST() {
     if (machine) await restartMachine(config.flyToken, config.flyApp, machine.id)
     return NextResponse.json({ ok: true, restarted: !!machine })
   } catch (err) {
-    return errorResponse(err instanceof Error ? err.message : 'Sync failed', 502)
+    return errorResponse(err instanceof Error ? err.message : 'Sync failed', 424)
   }
 }

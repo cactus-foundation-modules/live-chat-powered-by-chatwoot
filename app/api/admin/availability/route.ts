@@ -70,6 +70,6 @@ export async function POST(request: NextRequest) {
     await setAvailability(r.token, r.config.serverUrl!, r.config.accountId!, parsed.data.availability)
     return NextResponse.json({ ok: true, availability: parsed.data.availability })
   } catch {
-    return errorResponse('Could not reach the chat server', 502)
+    return errorResponse('Could not reach the chat server', 424)
   }
 }

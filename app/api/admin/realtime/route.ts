@@ -31,6 +31,6 @@ export async function GET() {
       accountId: profile.accountId,
     })
   } catch {
-    return errorResponse('Could not reach the chat server', 502)
+    return errorResponse('Could not reach the chat server', 424)
   }
 }

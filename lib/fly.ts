@@ -28,7 +28,17 @@ async function flyApi<T>(token: string, path: string, init: RequestInit = {}): P
   })
   if (!res.ok) {
     const text = await res.text().catch(() => '')
-    throw new Error(`Fly API ${res.status}: ${text.slice(0, 300)}`)
+    // Fly explains itself in {"error": "..."} - "We require your billing
+    // information", say. Hand that sentence on as it is, since it is what the
+    // owner has to act on.
+    let reason = text.slice(0, 300)
+    try {
+      const parsed: unknown = JSON.parse(text)
+      if (parsed && typeof parsed === 'object' && typeof (parsed as { error?: unknown }).error === 'string') {
+        reason = (parsed as { error: string }).error
+      }
+    } catch { /* not JSON - the raw text will do */ }
+    throw new Error(`Fly said (${res.status}): ${reason}`)
   }
   return res.json() as Promise<T>
 }

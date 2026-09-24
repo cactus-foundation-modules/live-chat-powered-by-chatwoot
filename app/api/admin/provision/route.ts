@@ -319,7 +319,7 @@ export async function POST(request: NextRequest) {
   } catch (err) {
     state.error = err instanceof Error ? err.message : 'step failed'
     await updateSettings({ provisionState: state })
-    return errorResponse(state.error, 502)
+    return errorResponse(state.error, 424)
   }
 
   delete state.error

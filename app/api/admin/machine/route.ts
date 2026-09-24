@@ -48,6 +48,9 @@ export async function POST(request: NextRequest) {
     await updateMachineImage(config.flyToken, config.flyApp, machine.id, image)
     return NextResponse.json({ ok: true, updatedTo: image })
   } catch (err) {
-    return errorResponse(err instanceof Error ? err.message : 'Fly API failed', 502)
+    // 424, not 502: Cloudflare in front of a site swaps a 502's body for its
+    // own error page, so the owner saw a bare "Failed" instead of Fly's reason.
+    // Every chat-server failure in this module answers 424 for the same reason.
+    return errorResponse(err instanceof Error ? err.message : 'Fly API failed', 424)
   }
 }

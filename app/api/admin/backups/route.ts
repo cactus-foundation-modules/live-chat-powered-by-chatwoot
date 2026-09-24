@@ -30,6 +30,6 @@ export async function POST() {
   if (!await hasPermission(user, 'livechat.manage')) return errorResponse('Forbidden', 403)
 
   const result = await triggerBackup()
-  if (!result.ok) return errorResponse(result.error ?? 'Backup failed', 502)
+  if (!result.ok) return errorResponse(result.error ?? 'Backup failed', 424)
   return NextResponse.json({ ok: true })
 }
