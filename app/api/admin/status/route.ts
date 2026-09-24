@@ -5,9 +5,11 @@ import { errorResponse } from '@/lib/utils'
 import { getLiveChatConfig } from '@/modules/live-chat/lib/settings'
 import { listMachines } from '@/modules/live-chat/lib/fly'
 import { backupStatus, machineHealth } from '@/modules/live-chat/lib/backups'
+import { imageBuildStatus } from '@/modules/live-chat/lib/image-builds'
 
-// One status read for the settings card: machine state, health, running
-// Chatwoot version (from the image tag), latest upstream release, last backup.
+// One status read for the settings card: machine state, health, which Cactus
+// build of the chat image is running against the newest one built, the latest
+// upstream Chatwoot release, last backup.
 export async function GET() {
   const user = await getSessionFromCookie()
   if (!user) return errorResponse('Not authenticated', 401)
@@ -23,6 +25,14 @@ export async function GET() {
         id: m.id, name: m.name, state: m.state, region: m.region,
         image: m.config?.image ?? null,
       }))
+      const first = machines[0]
+      if (first) {
+        try {
+          result.imageBuild = await imageBuildStatus(first.config?.image ?? null, first.image_ref?.digest ?? null)
+        } catch (err) {
+          result.imageBuildError = err instanceof Error ? err.message : 'Image registry unreachable'
+        }
+      }
     } catch (err) {
       result.machinesError = err instanceof Error ? err.message : 'Fly API failed'
     }

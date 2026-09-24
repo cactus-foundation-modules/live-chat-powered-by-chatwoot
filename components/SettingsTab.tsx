@@ -37,6 +37,8 @@ type Status = {
   machinesError?: string
   lastBackup?: { state?: string; finished_at?: string; error?: string } | null
   latestChatwoot?: string | null
+  imageBuild?: { running: string | null; newest: string | null; update: 'current' | 'available' | 'unknown' | 'not-ours' }
+  imageBuildError?: string
 }
 
 export function LiveChatSettingsTab() {
@@ -178,8 +180,14 @@ export function LiveChatSettingsTab() {
 
   const envManaged = settings.envProvided.length > 0
   const machine = status?.machines?.[0]
-  const runningTag = machine?.image?.match(/:(v[\d.]+)-cactus/)?.[1] ?? null
-  const updateAvailable = runningTag && status?.latestChatwoot && runningTag !== status.latestChatwoot
+  const build = status?.imageBuild
+  // The Chatwoot release inside a build tag (v4.16.2-cactus.4 -> v4.16.2).
+  const chatwootOf = (tag: string | null | undefined) => tag?.match(/^(v[\d.]+)-cactus\./)?.[1] ?? null
+  const runningChatwoot = chatwootOf(build?.running)
+  const newestChatwoot = chatwootOf(build?.newest)
+  // Upstream has released something the chat image has not been built for
+  // yet. Patch releases get built automatically; bigger jumps wait on a human.
+  const upstreamAhead = !!status?.latestChatwoot && !!newestChatwoot && status.latestChatwoot !== newestChatwoot
 
   return (
     <div style={{ maxWidth: '46rem', display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
@@ -253,15 +261,25 @@ export function LiveChatSettingsTab() {
           <div style={{ fontSize: '0.875rem', display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
             <div>Address: <a href={settings.serverUrl} target="_blank" rel="noreferrer noopener">{settings.serverUrl}</a></div>
             <div>Status: {status ? (status.healthy ? '🟢 healthy' : machine?.state === 'suspended' || machine?.state === 'stopped' ? '💤 asleep (wakes on demand)' : '🔴 unreachable') : '…'}</div>
-            {machine && <div>Machine: {machine.state} in {machine.region.toUpperCase()}{runningTag ? ` · Chatwoot ${runningTag}` : ''}</div>}
+            {machine && <div>Machine: {machine.state} in {machine.region.toUpperCase()}{runningChatwoot ? ` · Chatwoot ${runningChatwoot}` : ''}</div>}
             {status?.machinesError && <div style={{ color: 'var(--color-text-muted)' }}>Machine info unavailable: {status.machinesError}</div>}
             {status?.lastBackup?.state && (
               <div>Last backup: {status.lastBackup.state === 'ok' ? `✅ ${status.lastBackup.finished_at ?? ''}` : status.lastBackup.state}</div>
             )}
-            {status?.latestChatwoot && (
+            {build && build.update !== 'not-ours' && (
               <div>
-                Latest Chatwoot: {status.latestChatwoot}
-                {updateAvailable ? ' - update available' : runningTag ? ' - up to date' : ''}
+                Chat build: {build.running ?? 'not known'}
+                {build.update === 'available' && build.newest ? ` - update available (${build.newest})` : ''}
+                {build.update === 'current' ? ' - up to date' : ''}
+                {build.update === 'unknown' && build.newest ? ` - newest is ${build.newest}; press Update to be sure you are on it` : ''}
+              </div>
+            )}
+            {status?.imageBuildError && <div style={{ color: 'var(--color-text-muted)' }}>Could not check for newer builds: {status.imageBuildError}</div>}
+            {(upstreamAhead || build?.update === 'not-ours') && status?.latestChatwoot && (
+              <div style={{ color: 'var(--color-text-muted)' }}>
+                {build?.update === 'not-ours'
+                  ? `Latest Chatwoot: ${status.latestChatwoot} (this server runs its own image, so updates are up to you)`
+                  : `Chatwoot ${status.latestChatwoot} is out - it becomes available here once the chat image has been built for it.`}
               </div>
             )}
           </div>

@@ -6,11 +6,14 @@ import { errorResponse } from '@/lib/utils'
 import { getLiveChatConfig } from '@/modules/live-chat/lib/settings'
 import { listMachines, startMachine, updateMachineImage } from '@/modules/live-chat/lib/fly'
 import { triggerBackup } from '@/modules/live-chat/lib/backups'
+import { updateTarget } from '@/modules/live-chat/lib/image-builds'
 
 // Manual machine actions. "update" is the manual "Update Chatwoot" button:
 // dump the database first, then swap the machine to the newest built image -
-// Fly re-resolves the tag's digest, the machine restarts, Chatwoot migrates on
-// boot. Automatic PATCH updates happen upstream in the image repo's workflow.
+// pinned to that build's own tag rather than `latest`, so the settings card
+// can read back exactly which build is running - the machine restarts and
+// Chatwoot migrates on boot. Automatic PATCH updates happen upstream in the
+// image repo's workflow.
 const Body = z.object({ action: z.enum(['wake', 'update']) })
 
 export async function POST(request: NextRequest) {
@@ -39,8 +42,9 @@ export async function POST(request: NextRequest) {
     if (!backup.ok && backup.error !== 'A backup is already running') {
       return errorResponse(`Refusing to update without a fresh backup: ${backup.error}`, 503)
     }
-    const image = machine.config?.image?.replace(/:.+$/, ':latest') ?? null
-    if (!image) return errorResponse('Cannot work out the image to update to', 500)
+    const current = machine.config?.image ?? null
+    if (!current) return errorResponse('Cannot work out the image to update to', 500)
+    const image = await updateTarget(current)
     await updateMachineImage(config.flyToken, config.flyApp, machine.id, image)
     return NextResponse.json({ ok: true, updatedTo: image })
   } catch (err) {

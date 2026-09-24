@@ -10,6 +10,9 @@ export type FlyMachine = {
   state: string
   region: string
   config?: { image?: string }
+  // What Fly actually pulled. For a moving tag like `latest` the digest is the
+  // only way to tell which build is running.
+  image_ref?: { tag?: string; digest?: string }
 }
 
 async function flyApi<T>(token: string, path: string, init: RequestInit = {}): Promise<T> {
