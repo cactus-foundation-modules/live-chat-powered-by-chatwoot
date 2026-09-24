@@ -1,7 +1,9 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
+import { z } from 'zod'
 import { LIVE_CHAT_OPEN_EVENT } from '@/modules/live-chat/lib/open-event'
+import { publishUnread } from '@/modules/live-chat/lib/unread'
 import { CONSENT_CHANGE_EVENT, chatConsentGranted, consentAnswered, openConsentSettings } from '../lib/consent'
 
 // Customer-facing side of the LiveChatWidget block.
@@ -15,7 +17,11 @@ import { CONSENT_CHANGE_EVENT, chatConsentGranted, consentAnswered, openConsentS
 //   permission mid-visit closes an open panel and drops the widget without
 //   waiting for a reload.
 // - Nothing chat-related loads until the visitor clicks the bubble. No script,
-//   no cookies, no Chatwoot contact. The bubble is a plain button.
+//   no cookies, no Chatwoot contact. The bubble is a plain button. The one
+//   exception is a visitor who has already chatted THIS visit: on later pages
+//   the chat reconnects without opening, so a reply sent while they browse
+//   still reaches them (and the Mobile Bar's unread count) instead of waiting
+//   for them to think of looking.
 // - The page journey (this visit only) is buffered in sessionStorage, on the
 //   same permission. It leaves the browser only when a chat is opened.
 // - When core Turnstile is configured, opening chat runs a managed challenge
@@ -65,8 +71,9 @@ const JOURNEY_KEY = 'cactus-livechat-journey'
 const JOURNEY_MAX = 25
 // 'open' = the visitor navigated with the chat panel open, so it reopens
 // itself on the next page (conversation continuity). 'closed' = they shut it
-// deliberately - back to the bubble. Session-scoped like the journey: only a
-// visitor already chatting THIS visit ever auto-loads anything.
+// deliberately - back to the bubble, with the chat reconnected quietly behind
+// it so replies still arrive. Session-scoped like the journey: only a visitor
+// already chatting THIS visit ever auto-loads anything.
 const ACTIVE_KEY = 'cactus-livechat-active'
 
 function rememberPanelState(state: 'open' | 'closed') {
@@ -136,6 +143,34 @@ function jumpToMessages() {
   if (frame?.src) frame.src = frame.src.split('#')[0] + '#/messages'
 }
 
+// The widget frame reports to the page over postMessage, as
+// "chatwoot-widget:{json}". The one report read here is handleNotificationDot,
+// which carries Chatwoot's own count of agent replies the visitor has not
+// seen - sent when a reply lands while the panel is shut, and when a page loads
+// with replies still waiting. Anything else, or anything malformed, is ignored.
+const WIDGET_PREFIX = 'chatwoot-widget:'
+const widgetReport = z.object({ event: z.string(), unreadMessageCount: z.number().optional() })
+
+function readWidgetReport(data: unknown): z.infer<typeof widgetReport> | null {
+  if (typeof data !== 'string' || !data.startsWith(WIDGET_PREFIX)) return null
+  try {
+    const parsed = widgetReport.safeParse(JSON.parse(data.slice(WIDGET_PREFIX.length)))
+    return parsed.success ? parsed.data : null
+  } catch {
+    return null
+  }
+}
+
+// Open for reading, as opposed to open showing the little unread-message
+// preview over a shut chat: Chatwoot calls both "open" (and fires
+// chatwoot:opened for both), and only the holder's has-unread-view class tells
+// them apart. Only the first means the visitor has seen the replies.
+function panelReallyOpen(): boolean {
+  const open = (window as unknown as { $chatwoot?: { isOpen?: boolean } }).$chatwoot?.isOpen === true
+  const holder = document.querySelector('.woot-widget-holder')
+  return open && !!holder && !holder.classList.contains('has-unread-view')
+}
+
 function loadScript(src: string): Promise<void> {
   return new Promise((resolve, reject) => {
     const s = document.createElement('script')
@@ -163,18 +198,64 @@ export function WidgetLoader({ apiBase }: { apiBase: string }) {
   // granted: the explanation, and the way to change it.
   const [consentNotice, setConsentNotice] = useState(false)
   const startedRef = useRef(false)
+  // A boot in flight, and whether it should open the panel when it lands. A
+  // quiet reconnect that the visitor then asks to open becomes an opening boot
+  // rather than a second one.
+  const bootingRef = useRef(false)
+  const wantOpenRef = useRef(false)
   const turnstileHost = useRef<HTMLDivElement | null>(null)
+  // Origin of the chat server this page booted, once it has: the only sender
+  // whose postMessage reports are believed.
+  const serverOriginRef = useRef<string | null>(null)
 
   // Chatwoot announces its panel opening/closing; when it closes, our bubble
   // comes back (its own launcher stays hidden), so chat can always be reopened.
   useEffect(() => {
-    const onOpen = () => { setPanelOpen(true); rememberPanelState('open') }
+    // Chatwoot also calls its unread-message preview "open". That hides our
+    // bubble all the same (the preview sits where it would), but it is not the
+    // visitor opening the chat, so it must not make the next page open it.
+    const onOpen = () => {
+      setPanelOpen(true)
+      if (!document.querySelector('.woot-widget-holder.has-unread-view')) rememberPanelState('open')
+    }
     const onClose = () => { setPanelOpen(false); rememberPanelState('closed') }
     window.addEventListener('chatwoot:opened', onOpen)
     window.addEventListener('chatwoot:closed', onClose)
     return () => {
       window.removeEventListener('chatwoot:opened', onOpen)
       window.removeEventListener('chatwoot:closed', onClose)
+    }
+  }, [])
+
+  // Unread replies, for the Mobile Bar's chat cell. Chatwoot's frame supplies
+  // the count; reading the conversation clears it. The origin check means only
+  // the chat server this page booted can set a number.
+  useEffect(() => {
+    const settle = () => {
+      if (!panelReallyOpen()) return
+      publishUnread(0)
+      // Tapping a preview bubble opens the chat with no event of its own.
+      rememberPanelState('open')
+    }
+    // Chatwoot switches out of the preview a beat after its own events (tap a
+    // preview bubble and the frame changes route, then tells the page), so the
+    // check waits for the dust rather than reading the old state.
+    const settleSoon = () => { setTimeout(settle, 400) }
+    const onMessage = (e: MessageEvent) => {
+      if (!serverOriginRef.current || e.origin !== serverOriginRef.current) return
+      const report = readWidgetReport(e.data)
+      if (!report) return
+      if (report.event === 'handleNotificationDot' && report.unreadMessageCount !== undefined) {
+        if (!panelReallyOpen()) publishUnread(report.unreadMessageCount)
+      } else if (report.event === 'resetUnreadMode') {
+        settleSoon()
+      }
+    }
+    window.addEventListener('message', onMessage)
+    window.addEventListener('chatwoot:opened', settleSoon)
+    return () => {
+      window.removeEventListener('message', onMessage)
+      window.removeEventListener('chatwoot:opened', settleSoon)
     }
   }, [])
 
@@ -207,16 +288,31 @@ export function WidgetLoader({ apiBase }: { apiBase: string }) {
     })
   }, [])
 
-  const openChat = useCallback(async () => {
+  // 'open' is a visitor asking for the chat. 'quiet' is the reconnect on a
+  // later page for someone who shut it: the same boot, no panel, and no fuss
+  // if it fails - they did not ask for anything, so there is nothing to tell
+  // them went wrong.
+  const startChat = useCallback(async (mode: 'open' | 'quiet') => {
     if (startedRef.current) {
+      if (mode === 'quiet') return
       chatwoot()?.toggle('open')
       if (info?.online !== false) jumpToMessages()
       setPanelOpen(true)
       rememberPanelState('open')
+      publishUnread(0)
       return
     }
     if (!info) return
-    setState('starting')
+    if (bootingRef.current) {
+      if (mode === 'open' && !wantOpenRef.current) {
+        wantOpenRef.current = true
+        setState('starting')
+      }
+      return
+    }
+    bootingRef.current = true
+    wantOpenRef.current = mode === 'open'
+    if (mode === 'open') setState('starting')
     try {
       let turnstileToken: string | undefined
       if (info.turnstileSiteKey) turnstileToken = await getTurnstileToken(info.turnstileSiteKey)
@@ -228,6 +324,7 @@ export function WidgetLoader({ apiBase }: { apiBase: string }) {
       })
       if (!res.ok) throw new Error(`boot ${res.status}`)
       const boot = await res.json() as BootPayload
+      try { serverOriginRef.current = new URL(boot.serverUrl).origin } catch { /* no reports believed */ }
 
       // Follow the SITE's theme (core sets data-theme on the root and keeps it
       // in step with the toggle/OS). Chatwoot's widget offers 'light' or
@@ -255,6 +352,7 @@ export function WidgetLoader({ apiBase }: { apiBase: string }) {
       const onReady = () => {
         if (readied) return
         readied = true
+        bootingRef.current = false
         startedRef.current = true
         if (boot.identity) {
           chatwoot()?.setUser(boot.identity.identifier, {
@@ -278,10 +376,13 @@ export function WidgetLoader({ apiBase }: { apiBase: string }) {
         push()
         setTimeout(push, 8000)
         window.addEventListener('chatwoot:on-message', push, { once: true })
-        chatwoot()?.toggle('open')
-        if (info.online !== false) jumpToMessages()
-        setPanelOpen(true)
-        rememberPanelState('open')
+        if (wantOpenRef.current) {
+          chatwoot()?.toggle('open')
+          if (info.online !== false) jumpToMessages()
+          setPanelOpen(true)
+          rememberPanelState('open')
+          publishUnread(0)
+        }
         setState('ready')
       }
 
@@ -290,18 +391,22 @@ export function WidgetLoader({ apiBase }: { apiBase: string }) {
       // size. $chatwoot existing alone is not readiness: while the chat
       // server is still booting (it restarts for updates), the SDK global
       // appears but the panel stays 0x0, and trusting it hid the bubble over
-      // a blank void.
+      // a blank void. A quiet reconnect has no panel showing to measure, so it
+      // waits on the ready event alone.
       const readyPoll = setInterval(() => {
         if (readied) { clearInterval(readyPoll); return }
         const holder = document.querySelector('.woot-widget-holder')
         if (chatwoot() && holder && holder.getBoundingClientRect().height > 50) onReady()
       }, 500)
-      // Server unreachable or mid-boot: give up loudly instead of spinning.
+      // Server unreachable or mid-boot: give up loudly instead of spinning -
+      // unless nobody asked, in which case back to the plain bubble, which
+      // will try again properly when pressed.
       setTimeout(() => {
         clearInterval(readyPoll)
         if (!readied) {
           document.querySelector('.woot-widget-holder')?.remove()
-          setState('error')
+          bootingRef.current = false
+          setState(wantOpenRef.current ? 'error' : 'idle')
         }
       }, 45_000)
 
@@ -310,9 +415,12 @@ export function WidgetLoader({ apiBase }: { apiBase: string }) {
       if (!sdk) throw new Error('chat sdk missing')
       sdk.run({ websiteToken: boot.websiteToken, baseUrl: boot.serverUrl.replace(/\/$/, '') })
     } catch {
-      setState('error')
+      bootingRef.current = false
+      setState(wantOpenRef.current ? 'error' : 'idle')
     }
   }, [apiBase, info, getTurnstileToken])
+
+  const openChat = useCallback(() => startChat('open'), [startChat])
 
   // Consent, re-read whenever the visitor answers the banner or changes their
   // mind. On a site whose banner carries no live-chat category the server
@@ -360,20 +468,23 @@ export function WidgetLoader({ apiBase }: { apiBase: string }) {
       window.dispatchEvent(new Event('chatwoot:closed'))
     }
     forgetVisit()
+    publishUnread(0)
   }, [allowed, info])
 
   // Conversation continuity: a visitor who navigated with the panel open gets
-  // it reopened on the new page without another click. Runs once per page.
+  // it reopened on the new page without another click; one who had shut it
+  // gets the chat reconnected behind the bubble, so replies still find them.
+  // Runs once per page.
   const autoOpenedRef = useRef(false)
   useEffect(() => {
     if (!info || !allowed || autoOpenedRef.current || startedRef.current || state !== 'idle') return
     let flag: string | null = null
     try { flag = sessionStorage.getItem(ACTIVE_KEY) } catch { /* storage unavailable */ }
-    if (flag === 'open') {
+    if (flag === 'open' || flag === 'closed') {
       autoOpenedRef.current = true
-      openChat()
+      void startChat(flag === 'open' ? 'open' : 'quiet')
     }
-  }, [info, allowed, state, openChat])
+  }, [info, allowed, state, startChat])
 
   // Anything else on the page may ask for the chat: core's Mobile Bar carries a
   // chat cell, and this module's cell there is one line - it fires this event.

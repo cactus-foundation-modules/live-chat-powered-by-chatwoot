@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { LIVE_CHAT_OPEN_EVENT } from '@/modules/live-chat/lib/open-event'
+import { publishUnread } from '@/modules/live-chat/lib/unread'
 import { InboxCore, useLiveChatRealtime } from './InboxCore'
 
 // The frontend answering surface: admins browsing the public site get this
@@ -44,6 +45,11 @@ export function AgentConsole({ apiBase, position, hideOnMobile }: { apiBase: str
     setTimeout(poll, 2500)
     setTimeout(poll, 8000)
   }, [poll]))
+
+  // The Mobile Bar's chat cell shows the same number as this button, so staff
+  // on a phone - where the button may be hidden in the bar's favour - still
+  // see that somebody is waiting.
+  useEffect(() => { publishUnread(unread) }, [unread])
 
   // The same door the customer widget answers: core's Mobile Bar chat cell (and
   // any other chat control on the page) fires this event, and until now only
