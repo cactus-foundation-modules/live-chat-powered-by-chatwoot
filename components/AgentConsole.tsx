@@ -9,9 +9,11 @@ import { InboxCore, useLiveChatRealtime } from './InboxCore'
 // floating console instead of the customer widget, so a chat can be answered
 // without leaving the shop. Same components, same routes as the admin page.
 //
-// The realtime socket lives HERE, not inside the inbox, so a closed console
-// still hears new messages instantly: the badge updates at once and the
-// button pulses until it's opened.
+// A closed console keeps its unread badge up to date by polling the site's own
+// copy of the conversations (every 30s, fed by the chat server's webhooks). It
+// does NOT hold a live socket to the chat server: that counted as traffic and
+// kept the server awake, and billed, for as long as any member of staff had
+// the shop open. The socket opens with the console.
 export function AgentConsole({ apiBase, position, hideOnMobile }: { apiBase: string; position: 'left' | 'right'; hideOnMobile?: boolean }) {
   const [open, setOpen] = useState(false)
   const [unread, setUnread] = useState(0)
@@ -44,7 +46,7 @@ export function AgentConsole({ apiBase, position, hideOnMobile }: { apiBase: str
     poll()
     setTimeout(poll, 2500)
     setTimeout(poll, 8000)
-  }, [poll]))
+  }, [poll]), open)
 
   // The Mobile Bar's chat cell shows the same number as this button, so staff
   // on a phone - where the button may be hidden in the bar's favour - still

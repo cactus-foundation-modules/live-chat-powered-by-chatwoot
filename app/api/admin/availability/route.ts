@@ -6,6 +6,7 @@ import { errorResponse } from '@/lib/utils'
 import { getAgentToken } from '@/modules/live-chat/lib/db'
 import { getLiveChatConfig, updateSettings, type LiveChatConfig } from '@/modules/live-chat/lib/settings'
 import { closeInboxWorkingHours, getAvailability, setAvailability } from '@/modules/live-chat/lib/chatwoot'
+import { refreshAgentOnline, storeAgentOnline } from '@/modules/live-chat/lib/agent-online'
 
 // The Online/Offline switch shown on the admin inbox and the frontend agent
 // console. Availability drives what customers see on the widget (online vs
@@ -56,6 +57,10 @@ export async function GET() {
   if (r.error) return r.error
   await closeWorkingHoursOnce(r.config, r.config.apiToken ?? r.token)
   const availability = await getAvailability(r.token, r.config.serverUrl!, r.config.accountId!)
+  // The inbox opening is a moment the chat server is being asked anyway, so
+  // the stored "anyone on?" answer the public pages read is brought up to date
+  // here too - which also catches a switch flipped in Chatwoot's own app.
+  await refreshAgentOnline().catch(() => {})
   return NextResponse.json({ availability })
 }
 
@@ -68,6 +73,10 @@ export async function POST(request: NextRequest) {
   if (!parsed.success) return errorResponse('Invalid availability')
   try {
     await setAvailability(r.token, r.config.serverUrl!, r.config.accountId!, parsed.data.availability)
+    // Record it on the site's side for the public pages. Going offline only
+    // means "nobody on" if no other agent is, so ask; should that ask fail,
+    // this agent's own switch is the best answer there is.
+    await refreshAgentOnline().catch(() => storeAgentOnline(parsed.data.availability === 'online'))
     return NextResponse.json({ ok: true, availability: parsed.data.availability })
   } catch {
     return errorResponse('Could not reach the chat server', 424)

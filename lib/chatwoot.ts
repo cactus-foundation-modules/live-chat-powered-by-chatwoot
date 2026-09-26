@@ -193,6 +193,15 @@ export async function setAvailability(agentToken: string, serverUrl: string, acc
   return res.json()
 }
 
+// Whether ANY agent on the account is online. Availability is per agent in
+// Chatwoot, so one agent going offline says nothing about the others; the
+// account's agent list carries each one's current status. Needs an
+// administrator token - the module's own apiToken is one.
+export async function anyAgentOnline(token?: string | null): Promise<boolean> {
+  const agents = await chatwootApi<Array<{ availability_status?: string }>>('/agents', { token })
+  return agents.some((a) => a.availability_status === 'online')
+}
+
 // --- Contact deletion (GDPR erasure) ---------------------------------------
 
 export async function searchContactsByEmail(email: string, token?: string | null): Promise<Array<{ id: number; email: string | null }>> {

@@ -55,30 +55,41 @@ function initials(c: Conversation): string {
   return ((parts[0]?.[0] ?? '#') + (parts[1]?.[0] ?? '')).toUpperCase()
 }
 
-export function useLiveChatRealtime(apiBase: string, onEvent: (event: string, data: unknown) => void) {
+// The socket to the chat server is only open while someone is actually looking:
+// `enabled` (the frontend console passes whether it is open) AND the tab is
+// visible. An open socket counts as traffic to the chat server's host, which
+// then never sleeps - a staff member with the shop open in a background tab
+// kept it awake, and billed, around the clock. Hidden or shut, the socket goes;
+// the lc_ mirror polls (fed by the chat server's webhooks, which wake it as
+// needed) carry the unread counts in the meantime, and the socket reopens the
+// moment the tab is back in front.
+export function useLiveChatRealtime(apiBase: string, onEvent: (event: string, data: unknown) => void, enabled = true) {
   const onEventRef = useRef(onEvent)
   useEffect(() => { onEventRef.current = onEvent }, [onEvent])
 
   useEffect(() => {
+    if (!enabled) return
     let ws: WebSocket | null = null
     let closed = false
     let retry: ReturnType<typeof setTimeout> | null = null
 
     async function connect() {
+      if (closed || ws || document.visibilityState !== 'visible') return
       try {
         const res = await fetch(`${apiBase}/admin/realtime`)
         if (!res.ok) return
         const { serverUrl, pubsubToken } = await res.json() as { serverUrl: string; pubsubToken: string }
-        if (closed) return
+        if (closed || ws || document.visibilityState !== 'visible') return
         const wsUrl = serverUrl.replace(/^http/, 'ws').replace(/\/$/, '') + '/cable'
-        ws = new WebSocket(wsUrl)
-        ws.onopen = () => {
-          ws?.send(JSON.stringify({
+        const socket = new WebSocket(wsUrl)
+        ws = socket
+        socket.onopen = () => {
+          socket.send(JSON.stringify({
             command: 'subscribe',
             identifier: JSON.stringify({ channel: 'RoomChannel', pubsub_token: pubsubToken }),
           }))
         }
-        ws.onmessage = (msg) => {
+        socket.onmessage = (msg) => {
           try {
             const parsed = JSON.parse(msg.data as string)
             if (parsed.type === 'ping' || parsed.type === 'welcome' || parsed.type === 'confirm_subscription') return
@@ -86,7 +97,8 @@ export function useLiveChatRealtime(apiBase: string, onEvent: (event: string, da
             if (event) onEventRef.current(event, parsed.message.data)
           } catch { /* non-JSON frame */ }
         }
-        ws.onclose = () => {
+        socket.onclose = () => {
+          if (ws === socket) ws = null
           if (!closed) retry = setTimeout(connect, 10_000)
         }
       } catch {
@@ -94,13 +106,26 @@ export function useLiveChatRealtime(apiBase: string, onEvent: (event: string, da
       }
     }
 
-    connect()
+    function disconnect() {
+      if (retry) { clearTimeout(retry); retry = null }
+      const socket = ws
+      ws = null
+      socket?.close()
+    }
+
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') void connect()
+      else disconnect()
+    }
+
+    void connect()
+    document.addEventListener('visibilitychange', onVisibility)
     return () => {
       closed = true
-      if (retry) clearTimeout(retry)
-      ws?.close()
+      document.removeEventListener('visibilitychange', onVisibility)
+      disconnect()
     }
-  }, [apiBase])
+  }, [apiBase, enabled])
 }
 
 const STYLES = `

@@ -4,7 +4,7 @@ import { verifyTurnstile } from '@/lib/auth/turnstile'
 import { errorResponse } from '@/lib/utils'
 import { getLiveChatConfig } from '@/modules/live-chat/lib/settings'
 import { identifierHash } from '@/modules/live-chat/lib/identity'
-import { getAvailability } from '@/modules/live-chat/lib/chatwoot'
+import { readAgentOnline, refreshAgentOnline } from '@/modules/live-chat/lib/agent-online'
 import { CONSENT_CATEGORY } from '@/modules/live-chat/lib/consent'
 
 // Public boot endpoint the widget loader calls when a visitor clicks the chat
@@ -70,20 +70,25 @@ export async function GET() {
       consentGate = 'category'
     }
   } catch { /* config unreadable - default to allowed, matching no-banner sites */ }
-  // Bubble copy follows the manual Online/Offline switch: away = honest
-  // "Leave us a message". Best-effort with a short timeout - an unreachable
-  // chat server must not delay the page, so the bubble just defaults to the
-  // online copy.
+  // Bubble copy follows the Online/Offline switch: away = honest "Leave us a
+  // message". Read from the site's own database, NEVER the chat server - this
+  // runs on every page view, and asking the server woke it from sleep every
+  // time (see lib/agent-online.ts). The one exception is the very first read
+  // after the value started being recorded: asked once, stored, done. That
+  // one is best-effort with a short timeout, defaulting to the online copy.
   let online = true
-  if (config.serverUrl && config.accountId && config.apiToken) {
-    try {
-      const availability = await Promise.race([
-        getAvailability(config.apiToken, config.serverUrl, config.accountId),
+  try {
+    const stored = await readAgentOnline()
+    if (stored !== null) {
+      online = stored
+    } else if (config.serverUrl && config.accountId && config.apiToken) {
+      const fresh = await Promise.race([
+        refreshAgentOnline(),
         new Promise<null>((resolve) => setTimeout(() => resolve(null), 5000)),
       ])
-      if (availability === 'offline' || availability === 'busy') online = false
-    } catch { /* default to online copy */ }
-  }
+      if (fresh === false) online = false
+    }
+  } catch { /* default to online copy */ }
 
   // Nobody online AND no SMTP on the site means an offline message has no way
   // to reach a human (no missed-message emails to forward it) - so the widget
