@@ -17,6 +17,9 @@ export async function GET() {
 
   const config = await getLiveChatConfig()
   const result: Record<string, unknown> = { configured: !!(config.serverUrl && config.accountId) }
+  // What Fly says the machine is doing, read from Fly's own API - which does
+  // not touch the machine. Null when there is no Fly token to ask with.
+  let machineState: string | null = null
 
   if (config.flyToken && config.flyApp) {
     try {
@@ -26,6 +29,7 @@ export async function GET() {
         image: m.config?.image ?? null,
       }))
       const first = machines[0]
+      machineState = first?.state ?? null
       if (first) {
         try {
           result.imageBuild = await imageBuildStatus(first.config?.image ?? null, first.image_ref?.digest ?? null)
@@ -38,9 +42,21 @@ export async function GET() {
     }
   }
 
-  const [health, backup] = await Promise.all([machineHealth(), backupStatus()])
-  result.healthy = health
-  result.lastBackup = backup
+  // The health and last-backup reads go to the machine itself, through Fly's
+  // proxy - and a request through the proxy wakes a sleeping machine. Asking
+  // them whenever this card opened meant looking at the card woke the chat
+  // server, so it only ever showed as awake. Asleep per Fly: say so and leave
+  // it be (the card reads suspended/stopped as "asleep, wakes on demand").
+  // Unknown (no Fly token): ask, as there is nothing else to go on.
+  const asleep = machineState === 'suspended' || machineState === 'stopped'
+  if (asleep) {
+    result.healthy = false
+    result.lastBackup = null
+  } else {
+    const [health, backup] = await Promise.all([machineHealth(), backupStatus()])
+    result.healthy = health
+    result.lastBackup = backup
+  }
 
   try {
     const res = await fetch('https://api.github.com/repos/chatwoot/chatwoot/releases/latest', {
