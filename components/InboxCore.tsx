@@ -78,7 +78,7 @@ export function useLiveChatRealtime(apiBase: string, onEvent: (event: string, da
       try {
         const res = await fetch(`${apiBase}/admin/realtime`)
         if (!res.ok) return
-        const { serverUrl, pubsubToken } = await res.json() as { serverUrl: string; pubsubToken: string }
+        const { serverUrl, pubsubToken, accountId, userId } = await res.json() as { serverUrl: string; pubsubToken: string; accountId: number; userId: number }
         if (closed || ws || document.visibilityState !== 'visible') return
         const wsUrl = serverUrl.replace(/^http/, 'ws').replace(/\/$/, '') + '/cable'
         const socket = new WebSocket(wsUrl)
@@ -86,7 +86,11 @@ export function useLiveChatRealtime(apiBase: string, onEvent: (event: string, da
         socket.onopen = () => {
           socket.send(JSON.stringify({
             command: 'subscribe',
-            identifier: JSON.stringify({ channel: 'RoomChannel', pubsub_token: pubsubToken }),
+            // user_id + account_id mark this as an agent's subscription, as
+            // Chatwoot's own dashboard sends it. The token alone is read as a
+            // website visitor's and refused ("Couldn't find ContactInbox"),
+            // which left this socket subscribing to nothing.
+            identifier: JSON.stringify({ channel: 'RoomChannel', pubsub_token: pubsubToken, account_id: accountId, user_id: userId }),
           }))
         }
         socket.onmessage = (msg) => {

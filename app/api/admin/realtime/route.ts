@@ -28,7 +28,11 @@ export async function GET() {
     return NextResponse.json({
       serverUrl: config.serverUrl,
       pubsubToken: profile.pubsubToken,
-      accountId: profile.accountId,
+      // Both needed to subscribe as an AGENT: without user_id, Chatwoot's
+      // RoomChannel takes the token for a website visitor's, finds no such
+      // visitor and refuses the subscription.
+      accountId: config.accountId ?? profile.accountId,
+      userId: profile.agentId,
     })
   } catch {
     return errorResponse('Could not reach the chat server', 424)
