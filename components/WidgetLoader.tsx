@@ -61,6 +61,7 @@ type ChatwootGlobal = {
   toggle: (state?: 'open' | 'close') => void
   setUser: (identifier: string, props: Record<string, unknown>) => void
   setCustomAttributes: (attrs: Record<string, unknown>) => void
+  reset: () => void
 }
 
 function chatwoot(): ChatwootGlobal | undefined {
@@ -169,6 +170,26 @@ function readWidgetReport(data: unknown): z.infer<typeof widgetReport> | null {
   }
 }
 
+// Chatwoot's "End conversation" button only marks the chat resolved on the
+// server: the panel stays open on the same history and the page is told
+// nothing directly. What does reach the page is the note the server posts
+// into the chat when that happens, relayed as a chatwoot:on-message event -
+// an activity message (type 2) worded from Chatwoot's contact_resolved
+// string, "Conversation was resolved by {name}". That wording is the visitor
+// ending it; an agent resolving reads "marked resolved by", and inactivity
+// "marked resolved by ... due to", neither of which should shut the visitor's
+// window on them.
+const ACTIVITY_MESSAGE = 2
+const VISITOR_ENDED_PREFIX = 'Conversation was resolved by '
+const widgetMessage = z.object({ message_type: z.number(), content: z.string().nullable().optional() })
+
+function visitorEndedChat(detail: unknown): boolean {
+  const parsed = widgetMessage.safeParse(detail)
+  return parsed.success
+    && parsed.data.message_type === ACTIVITY_MESSAGE
+    && (parsed.data.content ?? '').startsWith(VISITOR_ENDED_PREFIX)
+}
+
 // Open for reading, as opposed to open showing the little unread-message
 // preview over a shut chat: Chatwoot calls both "open" (and fires
 // chatwoot:opened for both), and only the holder's has-unread-view class tells
@@ -215,6 +236,35 @@ export function WidgetLoader({ apiBase }: { apiBase: string }) {
   // Origin of the chat server this page booted, once it has: the only sender
   // whose postMessage reports are believed.
   const serverOriginRef = useRef<string | null>(null)
+  // Who the chat was booted for, so a fresh widget after "End conversation"
+  // is introduced to the same signed-in customer again.
+  const identityRef = useRef<BootPayload['identity']>(undefined)
+
+  // The visitor pressed "End conversation": shut the panel and start the
+  // widget over, so the next chat opens clean rather than on the one they
+  // just ended. reset() drops the widget's conversation cookie and reloads
+  // its frame; a signed-in customer is named to the new frame once it is up.
+  useEffect(() => {
+    const onMessage = (e: Event) => {
+      if (!visitorEndedChat((e as CustomEvent<unknown>).detail)) return
+      const identity = identityRef.current
+      if (identity) {
+        window.addEventListener('chatwoot:ready', () => {
+          chatwoot()?.setUser(identity.identifier, {
+            identifier_hash: identity.identifierHash,
+            name: identity.name,
+            email: identity.email,
+          })
+        }, { once: true })
+      }
+      chatwoot()?.reset()
+      setPanelOpen(false)
+      rememberPanelState('closed')
+      publishUnread(0)
+    }
+    window.addEventListener('chatwoot:on-message', onMessage)
+    return () => window.removeEventListener('chatwoot:on-message', onMessage)
+  }, [])
 
   // Chatwoot announces its panel opening/closing; when it closes, our bubble
   // comes back (its own launcher stays hidden), so chat can always be reopened.
@@ -303,8 +353,20 @@ export function WidgetLoader({ apiBase }: { apiBase: string }) {
   const startChat = useCallback(async (mode: 'open' | 'quiet') => {
     if (startedRef.current) {
       if (mode === 'quiet') return
-      chatwoot()?.toggle('open')
-      if (info?.online !== false) jumpToMessages()
+      if (document.querySelector('.woot-widget-holder.has-unread-view')) {
+        // The unread preview already counts as "open" to Chatwoot, so a plain
+        // open is ignored and the conversation would load inside the little
+        // preview frame. Shut the preview first: the frame drops its preview
+        // sizing and goes home, and the open that follows takes it from home
+        // straight to the conversation, as it does for anyone with messages.
+        // No hash jump here - landing on the conversation before the close is
+        // read would stop the frame dropping its preview sizing.
+        chatwoot()?.toggle('close')
+        chatwoot()?.toggle('open')
+      } else {
+        chatwoot()?.toggle('open')
+        if (info?.online !== false) jumpToMessages()
+      }
       setPanelOpen(true)
       rememberPanelState('open')
       publishUnread(0)
@@ -333,6 +395,7 @@ export function WidgetLoader({ apiBase }: { apiBase: string }) {
       if (!res.ok) throw new Error(`boot ${res.status}`)
       const boot = await res.json() as BootPayload
       try { serverOriginRef.current = new URL(boot.serverUrl).origin } catch { /* no reports believed */ }
+      identityRef.current = boot.identity
 
       // Follow the SITE's theme (core sets data-theme on the root and keeps it
       // in step with the toggle/OS). Chatwoot's widget offers 'light' or
@@ -541,11 +604,14 @@ export function WidgetLoader({ apiBase }: { apiBase: string }) {
     <>
       <div ref={turnstileHost} style={{ position: 'fixed', bottom: '-9999px' }} aria-hidden="true" />
       {/* Chatwoot's own phone stylesheet pins its unread-message preview frame
-          to bottom:0 at full width. The frame is transparent below the card, so
-          it sat invisibly over core's Mobile Bar and swallowed taps on the cells
-          beneath it. Lift it above the bar by the offset the bar publishes (0
-          when there is no bar). !important because Chatwoot's rule is its own. */}
-      <style dangerouslySetInnerHTML={{ __html: `.woot-widget-holder.has-unread-view{bottom:var(--cactus-bottom-bar-offset,0px) !important}` }} />
+          to bottom:0 at full width, and the frame is transparent for a strip
+          below the card - strip that sat invisibly over core's Mobile Bar and
+          swallowed taps on the cells beneath it. Lifting the frame by the bar
+          height moved the card up by the same amount, leaving a gap. Instead
+          the frame stays where Chatwoot puts it and the bar's height (0 when
+          there is no bar) is clipped off its bottom: clipped pixels neither
+          paint nor take taps, so the bar underneath is reachable again. */}
+      <style dangerouslySetInnerHTML={{ __html: `.woot-widget-holder.has-unread-view{clip-path:inset(0 0 var(--cactus-bottom-bar-offset,0px) 0)}` }} />
       {noticeOpen && (
         // Not .lc-bubble-host: the notice is also the answer to a press from
         // the Mobile Bar or the basket's chat button, and on a phone with the
