@@ -4,6 +4,14 @@ import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from '
 import { z } from 'zod'
 import { LIVE_CHAT_OPEN_EVENT } from '@/modules/live-chat/lib/open-event'
 import { publishUnread } from '@/modules/live-chat/lib/unread'
+import { BUBBLE_BG, BUBBLE_FG } from '@/modules/live-chat/lib/bubble-style'
+import {
+  publishChatButtonLabel,
+  readCartDrawerOpen,
+  registerCartDrawerExtra,
+  subscribeCartDrawerOpen,
+} from '@/modules/live-chat/lib/cart-drawer-seam'
+import { CartDrawerChatButton } from '@/modules/live-chat/components/CartDrawerChatButton'
 import { CONSENT_CHANGE_EVENT, chatConsentGranted, consentAnswered, openConsentSettings } from '../lib/consent'
 
 // Customer-facing side of the LiveChatWidget block.
@@ -491,11 +499,33 @@ export function WidgetLoader({ apiBase }: { apiBase: string }) {
   // Routed through the loader rather than reaching for $chatwoot directly so
   // that a first press still goes through boot, consent and Turnstile in the
   // one place that knows about them.
+  //
+  // Consent is answered exactly as the bubble answers it: with the cookie still
+  // switched off, a press explains why chat cannot start rather than starting
+  // it anyway. Without this a press from elsewhere went straight to boot and
+  // round the question the bubble is careful to ask.
   useEffect(() => {
-    const onOpenRequest = () => { void openChat() }
+    const onOpenRequest = () => {
+      if (!allowed) { setConsentNotice(true); return }
+      void openChat()
+    }
     window.addEventListener(LIVE_CHAT_OPEN_EVENT, onOpenRequest)
     return () => window.removeEventListener(LIVE_CHAT_OPEN_EVENT, onOpenRequest)
-  }, [openChat])
+  }, [openChat, allowed])
+
+  // The shop's slide-out basket, when there is one on the page. While it is
+  // open the bubble would sit over the panel's own buttons, so the bubble goes
+  // and the chat is offered inside the panel instead, full width under "View
+  // full basket" (lib/cart-drawer-seam.ts). Registered only while chat is
+  // actually on for this site, so a basket on a page with chat switched off
+  // draws no chat button that nothing would answer.
+  const cartDrawerOpen = useSyncExternalStore(subscribeCartDrawerOpen, readCartDrawerOpen, () => false)
+  const drawerLabel = info ? (info.online === false ? 'Leave us a message' : info.label) : ''
+  useEffect(() => {
+    if (!info) return
+    publishChatButtonLabel(drawerLabel)
+    return registerCartDrawerExtra('live-chat', CartDrawerChatButton)
+  }, [info, drawerLabel])
 
   // The block itself is still off, or chat is switched off site-wide: nothing to
   // draw. Consent is handled below - the bubble stays, the chat does not start.
@@ -510,11 +540,20 @@ export function WidgetLoader({ apiBase }: { apiBase: string }) {
   return (
     <>
       <div ref={turnstileHost} style={{ position: 'fixed', bottom: '-9999px' }} aria-hidden="true" />
+      {/* Chatwoot's own phone stylesheet pins its unread-message preview frame
+          to bottom:0 at full width. The frame is transparent below the card, so
+          it sat invisibly over core's Mobile Bar and swallowed taps on the cells
+          beneath it. Lift it above the bar by the offset the bar publishes (0
+          when there is no bar). !important because Chatwoot's rule is its own. */}
+      <style dangerouslySetInnerHTML={{ __html: `.woot-widget-holder.has-unread-view{bottom:var(--cactus-bottom-bar-offset,0px) !important}` }} />
       {noticeOpen && (
+        // Not .lc-bubble-host: the notice is also the answer to a press from
+        // the Mobile Bar or the basket's chat button, and on a phone with the
+        // bubble hidden it has to stay visible or that press does nothing.
         <div
           role="dialog"
           aria-label="Live chat needs a cookie"
-          className="lc-bubble-host"
+          className="lc-consent-notice"
           style={{
             position: 'fixed', bottom: 'calc(4.75rem + var(--cactus-bottom-bar-offset, 0px))', ...side, zIndex: 2147482000,
             width: 'min(20rem, calc(100vw - 2.5rem))',
@@ -576,7 +615,7 @@ export function WidgetLoader({ apiBase }: { apiBase: string }) {
         // otherwise outranks anything a stylesheet has to say.
         <style dangerouslySetInnerHTML={{ __html: `@media (max-width: 640px){.lc-bubble-text{display:none}.lc-bubble{gap:0 !important;padding:0.9rem !important}}` }} />
       )}
-      {!panelOpen && (
+      {!panelOpen && !cartDrawerOpen && (
         <button
           type="button"
           onClick={
@@ -597,7 +636,7 @@ export function WidgetLoader({ apiBase }: { apiBase: string }) {
             position: 'fixed', bottom: 'calc(1.25rem + var(--cactus-bottom-bar-offset, 0px))', ...side, zIndex: 2147482000,
             display: 'flex', alignItems: 'center', gap: '0.5rem',
             padding: '0.75rem 1.1rem', borderRadius: '999px', border: 'none',
-            background: 'var(--color-accent, #1A5F5A)', color: '#fff',
+            background: BUBBLE_BG, color: BUBBLE_FG,
             fontSize: '0.9375rem', fontWeight: 600, cursor: 'pointer',
             boxShadow: '0 4px 14px rgba(0,0,0,0.25)',
           }}
